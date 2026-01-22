@@ -79,7 +79,15 @@ def run_query(query):
     cur.execute(query)
     columns = [desc[0] for desc in cur.description]
     data = cur.fetchall()
-    return pd.DataFrame(data, columns=columns)
+    df = pd.DataFrame(data, columns=columns)
+    # Convert numeric columns from Decimal/string to float
+    for col in df.columns:
+        if df[col].dtype == object:
+            try:
+                df[col] = pd.to_numeric(df[col], errors='ignore')
+            except:
+                pass
+    return df
 
 # Header
 st.title("🎮 Bek va Lola Analytics")
@@ -376,7 +384,8 @@ with tab2:
             FROM first_day f LEFT JOIN returned r ON f.USER_ID = r.USER_ID
             WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -1, '{end_str}')
         """)
-        col_ret1.metric("📅 Day 1", f"{d1['RET'][0]}%", help="Returned next day")
+        ret_val = float(d1['RET'][0]) if d1['RET'][0] is not None else 0
+        col_ret1.metric("📅 Day 1", f"{ret_val}%", help="Returned next day")
     except:
         col_ret1.metric("📅 Day 1", "N/A")
 
@@ -397,7 +406,8 @@ with tab2:
             FROM first_day f LEFT JOIN returned r ON f.USER_ID = r.USER_ID
             WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -7, '{end_str}')
         """)
-        col_ret2.metric("📅 Day 7", f"{d7['RET'][0]}%", help="Returned after a week")
+        ret_val = float(d7['RET'][0]) if d7['RET'][0] is not None else 0
+        col_ret2.metric("📅 Day 7", f"{ret_val}%", help="Returned after a week")
     except:
         col_ret2.metric("📅 Day 7", "N/A")
 
@@ -418,7 +428,8 @@ with tab2:
             FROM first_day f LEFT JOIN returned r ON f.USER_ID = r.USER_ID
             WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -14, '{end_str}')
         """)
-        col_ret3.metric("📅 Day 14", f"{d14['RET'][0]}%", help="Returned after 2 weeks")
+        ret_val = float(d14['RET'][0]) if d14['RET'][0] is not None else 0
+        col_ret3.metric("📅 Day 14", f"{ret_val}%", help="Returned after 2 weeks")
     except:
         col_ret3.metric("📅 Day 14", "N/A")
 
@@ -439,7 +450,8 @@ with tab2:
             FROM first_day f LEFT JOIN returned r ON f.USER_ID = r.USER_ID
             WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -30, '{end_str}')
         """)
-        col_ret4.metric("📅 Day 30", f"{d30['RET'][0]}%", help="Returned after a month")
+        ret_val = float(d30['RET'][0]) if d30['RET'][0] is not None else 0
+        col_ret4.metric("📅 Day 30", f"{ret_val}%", help="Returned after a month")
     except:
         col_ret4.metric("📅 Day 30", "N/A")
 
@@ -480,6 +492,10 @@ with tab2:
             ORDER BY days_since_start
         """)
         if not retention_df.empty and len(retention_df) > 1:
+            # Ensure numeric types for chart
+            retention_df['DAY'] = pd.to_numeric(retention_df['DAY'], errors='coerce')
+            retention_df['RETENTION'] = pd.to_numeric(retention_df['RETENTION'], errors='coerce')
+            retention_df = retention_df.dropna()
             st.line_chart(retention_df.set_index('DAY')['RETENTION'])
 
             with st.expander("📊 Retention Curve Details"):
