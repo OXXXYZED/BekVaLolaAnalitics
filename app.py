@@ -68,34 +68,55 @@ def get_friendly_name(event_name):
 # Подключение к Snowflake
 @st.cache_resource
 def get_connection():
-    return snowflake.connector.connect(
-        user=st.secrets["snowflake"]["user"],
-        password=st.secrets["snowflake"]["password"],
-        account=st.secrets["snowflake"]["account"],
-        warehouse=st.secrets["snowflake"]["warehouse"],
-        database=st.secrets["snowflake"]["database"],
-        schema=st.secrets["snowflake"]["schema"]
-    )
+    try:
+        conn = snowflake.connector.connect(
+            user=st.secrets["snowflake"]["user"],
+            password=st.secrets["snowflake"]["password"],
+            account=st.secrets["snowflake"]["account"],
+            warehouse=st.secrets["snowflake"]["warehouse"],
+            database=st.secrets["snowflake"]["database"],
+            schema=st.secrets["snowflake"]["schema"]
+        )
+        return conn
+    except Exception as e:
+        st.error(f"❌ Failed to connect to Snowflake: {str(e)}")
+        return None
 
 def run_query(query):
     conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(query)
-    columns = [desc[0] for desc in cur.description]
-    data = cur.fetchall()
-    df = pd.DataFrame(data, columns=columns)
-    # Convert numeric columns from Decimal/string to float
-    for col in df.columns:
-        if df[col].dtype == object:
-            try:
-                df[col] = pd.to_numeric(df[col], errors='ignore')
-            except:
-                pass
-    return df
+    if conn is None:
+        return pd.DataFrame()
+    try:
+        cur = conn.cursor()
+        cur.execute(query)
+        columns = [desc[0] for desc in cur.description]
+        data = cur.fetchall()
+        df = pd.DataFrame(data, columns=columns)
+        # Convert numeric columns from Decimal/string to float
+        for col in df.columns:
+            if df[col].dtype == object:
+                try:
+                    # Use coerce instead of deprecated 'ignore', then fillna with original
+                    numeric_col = pd.to_numeric(df[col], errors='coerce')
+                    # If conversion worked for at least some values, use it
+                    if numeric_col.notna().any():
+                        df[col] = numeric_col.fillna(df[col])
+                except:
+                    pass
+        return df
+    except Exception as e:
+        st.error(f"Query error: {str(e)}")
+        return pd.DataFrame()
 
 # Header
 st.title("🎮 Bek va Lola Analytics")
 st.caption("Game analytics powered by Unity Analytics")
+
+# Check if secrets are configured
+if "snowflake" not in st.secrets:
+    st.error("❌ Snowflake secrets not configured. Please add secrets in Streamlit Cloud settings.")
+    st.info("Go to Settings → Secrets and add your Snowflake credentials.")
+    st.stop()
 
 # GAME_ID для Bek va Lola
 GAME_ID = 181330318
@@ -149,10 +170,15 @@ try:
         WHERE GAME_ID = {GAME_ID}
         ORDER BY CLIENT_VERSION DESC
     """)
-    versions_list = versions_df['CLIENT_VERSION'].tolist()
-    version_filter = st.sidebar.multiselect("Select versions", versions_list, default=versions_list)
-    version_str = "','".join(version_filter)
-except:
+    versions_list = versions_df['CLIENT_VERSION'].tolist() if not versions_df.empty else []
+    if versions_list:
+        version_filter = st.sidebar.multiselect("Select versions", versions_list, default=versions_list)
+        version_str = "','".join(version_filter) if version_filter else "','".join(versions_list)
+    else:
+        version_filter = []
+        version_str = ""
+except Exception as e:
+    st.sidebar.warning(f"Could not load versions")
     version_filter = []
     version_str = ""
 
@@ -165,10 +191,15 @@ try:
         WHERE GAME_ID = {GAME_ID} AND USER_COUNTRY IS NOT NULL
         ORDER BY USER_COUNTRY
     """)
-    countries_list = countries_df['USER_COUNTRY'].tolist()
-    country_filter = st.sidebar.multiselect("Select countries", countries_list, default=countries_list)
-    country_str = "','".join(country_filter)
-except:
+    countries_list = countries_df['USER_COUNTRY'].tolist() if not countries_df.empty else []
+    if countries_list:
+        country_filter = st.sidebar.multiselect("Select countries", countries_list, default=countries_list)
+        country_str = "','".join(country_filter) if country_filter else "','".join(countries_list)
+    else:
+        country_filter = []
+        country_str = ""
+except Exception as e:
+    st.sidebar.warning(f"Could not load countries")
     country_filter = []
     country_str = ""
 
@@ -615,8 +646,8 @@ with tab2:
             """)
             if not retention_df.empty and len(retention_df) > 1:
                 # Ensure numeric types for chart
-                retention_df['DAY'] = pd.to_numeric(retention_df['DAY'], errors='coerce')
-                retention_df['RETENTION'] = pd.to_numeric(retention_df['RETENTION'], errors='coerce')
+                retention_df['DAY'] = pd.to_numeric(retention_df['DAY'], errors='coerce').astype(float)
+                retention_df['RETENTION'] = pd.to_numeric(retention_df['RETENTION'], errors='coerce').astype(float)
                 retention_df = retention_df.dropna()
                 st.line_chart(retention_df.set_index('DAY')['RETENTION'])
 
