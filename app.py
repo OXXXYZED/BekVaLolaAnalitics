@@ -121,13 +121,6 @@ if "snowflake" not in st.secrets:
     st.info("Go to Settings → Secrets and add your Snowflake credentials.")
     st.stop()
 
-# Test connection on startup
-with st.spinner("Connecting to database..."):
-    test_conn = get_connection()
-    if test_conn is None:
-        st.error("❌ Could not connect to Snowflake. Check your credentials.")
-        st.stop()
-
 # GAME_ID для Bek va Lola
 GAME_ID = 181330318
 DB = "UNITY_ANALYTICS_GCP_US_CENTRAL1_UNITY_ANALYTICS_PDA.SHARES"
@@ -171,33 +164,16 @@ platform_filter = st.sidebar.multiselect(
 )
 platform_str = "','".join(platform_filter)
 
-# Cached filter data functions
-@st.cache_data(ttl=3600)
-def get_versions():
-    df = run_query(f"""
+# Version Filter
+st.sidebar.subheader("📦 App Version")
+try:
+    versions_df = run_query(f"""
         SELECT DISTINCT CLIENT_VERSION
         FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
         WHERE GAME_ID = {GAME_ID}
         ORDER BY CLIENT_VERSION DESC
-        LIMIT 50
     """)
-    return df['CLIENT_VERSION'].tolist() if not df.empty else []
-
-@st.cache_data(ttl=3600)
-def get_countries():
-    df = run_query(f"""
-        SELECT DISTINCT USER_COUNTRY
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID} AND USER_COUNTRY IS NOT NULL
-        ORDER BY USER_COUNTRY
-        LIMIT 100
-    """)
-    return df['USER_COUNTRY'].tolist() if not df.empty else []
-
-# Version Filter
-st.sidebar.subheader("📦 App Version")
-try:
-    versions_list = get_versions()
+    versions_list = versions_df['CLIENT_VERSION'].tolist() if not versions_df.empty else []
     if versions_list:
         version_filter = st.sidebar.multiselect("Select versions", versions_list, default=versions_list)
         version_str = "','".join(version_filter) if version_filter else "','".join(versions_list)
@@ -212,7 +188,13 @@ except Exception as e:
 # Country Filter
 st.sidebar.subheader("🌍 Country")
 try:
-    countries_list = get_countries()
+    countries_df = run_query(f"""
+        SELECT DISTINCT USER_COUNTRY
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID} AND USER_COUNTRY IS NOT NULL
+        ORDER BY USER_COUNTRY
+    """)
+    countries_list = countries_df['USER_COUNTRY'].tolist() if not countries_df.empty else []
     if countries_list:
         country_filter = st.sidebar.multiselect("Select countries", countries_list, default=countries_list)
         country_str = "','".join(country_filter) if country_filter else "','".join(countries_list)
