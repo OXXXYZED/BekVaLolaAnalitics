@@ -762,14 +762,14 @@ with tab5:
     try:
         notif_df = run_query(f"""
             SELECT
-                EVENT_JSON:permissionGranted::BOOLEAN as GRANTED,
+                EVENT_JSON:permissionGranted::INT as GRANTED,
                 COUNT(*) as COUNT,
                 COUNT(DISTINCT USER_ID) as UNIQUE_USERS
             FROM {DB}.ACCOUNT_EVENTS
             WHERE GAME_ID = {GAME_ID}
             AND EVENT_NAME = 'NotificationPermissionGranted'
             AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-            GROUP BY EVENT_JSON:permissionGranted::BOOLEAN
+            GROUP BY EVENT_JSON:permissionGranted::INT
         """)
 
         if not notif_df.empty:
@@ -779,13 +779,13 @@ with tab5:
             total_count = int(notif_df['COUNT'].sum())
             total_users = int(notif_df['UNIQUE_USERS'].sum())
 
-            # Granted (true)
-            granted_row = notif_df[notif_df['GRANTED'] == True]
+            # Granted (1)
+            granted_row = notif_df[notif_df['GRANTED'] == 1]
             granted_count = int(granted_row['COUNT'].iloc[0]) if not granted_row.empty else 0
             granted_users = int(granted_row['UNIQUE_USERS'].iloc[0]) if not granted_row.empty else 0
 
-            # Denied (false)
-            denied_row = notif_df[notif_df['GRANTED'] == False]
+            # Denied (0)
+            denied_row = notif_df[notif_df['GRANTED'] == 0]
             denied_count = int(denied_row['COUNT'].iloc[0]) if not denied_row.empty else 0
             denied_users = int(denied_row['UNIQUE_USERS'].iloc[0]) if not denied_row.empty else 0
 
@@ -810,8 +810,8 @@ with tab5:
             notif_trend = run_query(f"""
                 SELECT
                     DATE(EVENT_TIMESTAMP) as DATE,
-                    SUM(CASE WHEN EVENT_JSON:permissionGranted::BOOLEAN = TRUE THEN 1 ELSE 0 END) as GRANTED,
-                    SUM(CASE WHEN EVENT_JSON:permissionGranted::BOOLEAN = FALSE THEN 1 ELSE 0 END) as DENIED
+                    SUM(CASE WHEN EVENT_JSON:permissionGranted::INT = 1 THEN 1 ELSE 0 END) as GRANTED,
+                    SUM(CASE WHEN EVENT_JSON:permissionGranted::INT = 0 THEN 1 ELSE 0 END) as DENIED
                 FROM {DB}.ACCOUNT_EVENTS
                 WHERE GAME_ID = {GAME_ID}
                 AND EVENT_NAME = 'NotificationPermissionGranted'
