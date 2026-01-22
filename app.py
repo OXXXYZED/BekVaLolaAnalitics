@@ -55,6 +55,9 @@ ACTION_NAMES = {
     'tutorialStarted': '📖 Tutorial Started',
     'tutorialCompleted': '🎓 Tutorial Completed',
     'tutorialSkipped': '⏩ Tutorial Skipped',
+
+    # Notifications
+    'NotificationPermissionGranted': '🔔 Notification Permission',
 }
 
 def get_friendly_name(event_name):
@@ -749,6 +752,81 @@ with tab5:
                     st.line_chart(event_detail.set_index('DATE')['COUNT'])
     except:
         st.info("No data available")
+
+    st.markdown("---")
+
+    # Notification Permission Analysis
+    st.subheader("🔔 Notification Permission")
+    st.caption("How players respond to notification permission request")
+
+    try:
+        notif_df = run_query(f"""
+            SELECT
+                EVENT_JSON:permissionGranted::BOOLEAN as GRANTED,
+                COUNT(*) as COUNT,
+                COUNT(DISTINCT USER_ID) as UNIQUE_USERS
+            FROM {DB}.ACCOUNT_EVENTS
+            WHERE GAME_ID = {GAME_ID}
+            AND EVENT_NAME = 'NotificationPermissionGranted'
+            AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
+            GROUP BY EVENT_JSON:permissionGranted::BOOLEAN
+        """)
+
+        if not notif_df.empty:
+            col_n1, col_n2, col_n3 = st.columns(3)
+
+            # Total requests
+            total_count = int(notif_df['COUNT'].sum())
+            total_users = int(notif_df['UNIQUE_USERS'].sum())
+
+            # Granted (true)
+            granted_row = notif_df[notif_df['GRANTED'] == True]
+            granted_count = int(granted_row['COUNT'].iloc[0]) if not granted_row.empty else 0
+            granted_users = int(granted_row['UNIQUE_USERS'].iloc[0]) if not granted_row.empty else 0
+
+            # Denied (false)
+            denied_row = notif_df[notif_df['GRANTED'] == False]
+            denied_count = int(denied_row['COUNT'].iloc[0]) if not denied_row.empty else 0
+            denied_users = int(denied_row['UNIQUE_USERS'].iloc[0]) if not denied_row.empty else 0
+
+            # Calculate rate
+            grant_rate = round(granted_count * 100 / total_count, 1) if total_count > 0 else 0
+
+            with col_n1:
+                st.metric("📊 Total Requests", f"{total_count:,}", help="Total notification permission requests")
+                st.metric("👥 Unique Players", f"{total_users:,}")
+
+            with col_n2:
+                st.metric("✅ Granted", f"{granted_count:,}", help="Players who allowed notifications")
+                st.metric("👥 Unique Players", f"{granted_users:,}")
+
+            with col_n3:
+                st.metric("❌ Denied", f"{denied_count:,}", help="Players who denied notifications")
+                st.metric("👥 Unique Players", f"{denied_users:,}")
+
+            st.markdown(f"**Grant Rate: {grant_rate}%** of players allowed notifications")
+
+            # Daily trend
+            notif_trend = run_query(f"""
+                SELECT
+                    DATE(EVENT_TIMESTAMP) as DATE,
+                    SUM(CASE WHEN EVENT_JSON:permissionGranted::BOOLEAN = TRUE THEN 1 ELSE 0 END) as GRANTED,
+                    SUM(CASE WHEN EVENT_JSON:permissionGranted::BOOLEAN = FALSE THEN 1 ELSE 0 END) as DENIED
+                FROM {DB}.ACCOUNT_EVENTS
+                WHERE GAME_ID = {GAME_ID}
+                AND EVENT_NAME = 'NotificationPermissionGranted'
+                AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
+                GROUP BY DATE(EVENT_TIMESTAMP)
+                ORDER BY DATE
+            """)
+
+            if not notif_trend.empty:
+                st.subheader("📈 Daily Notification Permission Trend")
+                st.line_chart(notif_trend.set_index('DATE')[['GRANTED', 'DENIED']])
+        else:
+            st.info("No notification permission data for selected period")
+    except:
+        st.info("No notification permission data available")
 
     # Action reference
     with st.expander("📖 Action Reference"):
