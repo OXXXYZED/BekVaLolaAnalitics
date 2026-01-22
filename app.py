@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import snowflake.connector
 from io import BytesIO
+from decimal import Decimal
 
 # Настройки страницы
 st.set_page_config(
@@ -92,13 +93,15 @@ def run_query(query):
         columns = [desc[0] for desc in cur.description]
         data = cur.fetchall()
         df = pd.DataFrame(data, columns=columns)
-        # Convert numeric columns from Decimal/string to float
+        # Convert Decimal and numeric columns to float for chart compatibility
         for col in df.columns:
-            if df[col].dtype == object:
+            # First, convert Decimal objects to float
+            if df[col].apply(lambda x: isinstance(x, Decimal)).any():
+                df[col] = df[col].apply(lambda x: float(x) if isinstance(x, Decimal) else x)
+            # Then try to convert string numbers
+            elif df[col].dtype == object:
                 try:
-                    # Use coerce instead of deprecated 'ignore', then fillna with original
                     numeric_col = pd.to_numeric(df[col], errors='coerce')
-                    # If conversion worked for at least some values, use it
                     if numeric_col.notna().any():
                         df[col] = numeric_col.fillna(df[col])
                 except:
