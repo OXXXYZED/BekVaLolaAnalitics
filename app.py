@@ -654,7 +654,7 @@ with tab4:
 
     with col_h:
         st.subheader("🕐 Activity by Hour")
-        st.caption("When players are most active during the day (UTC)")
+        st.caption("When players are most active during the day (UTC +5)")
         try:
             h_df = run_query(f"""
     SELECT
