@@ -172,6 +172,18 @@ except:
     country_filter = []
     country_str = ""
 
+# Timezone selector
+st.sidebar.subheader("🕐 Timezone")
+timezone_options = {
+    "UTC+5 (Uzbekistan)": 5,
+    "UTC+3 (Moscow)": 3,
+    "UTC+0 (London)": 0,
+    "UTC-5 (New York)": -5,
+    "UTC+8 (Singapore)": 8,
+}
+selected_tz = st.sidebar.selectbox("Select timezone", list(timezone_options.keys()), index=0)
+tz_offset = timezone_options[selected_tz]
+
 # Base WHERE clause
 WHERE = f"""
 WHERE GAME_ID = {GAME_ID}
@@ -394,9 +406,9 @@ with tab1:
                 SELECT ROUND(AVG(NUMBER_OF_EVENTS), 1) as EPS
                 FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
             """)
-        col12.metric("🔢 Actions/Session", f"{eps['EPS'][0]}", help="Average actions per session")
-    except:
-        col12.metric("🔢 Actions/Session", "N/A")
+            col12.metric("🔢 Actions/Session", f"{eps['EPS'][0]}", help="Average actions per session")
+        except:
+            col12.metric("🔢 Actions/Session", "N/A")
 
     st.markdown("---")
 
@@ -736,68 +748,75 @@ with tab4:
     st.subheader("📊 Player Segments")
     st.caption("Audience breakdown by various parameters")
 
-    col_l, col_r = st.columns(2)
+    with st.spinner("Loading segments data..."):
+        col_l, col_r = st.columns(2)
 
-    with col_l:
-        st.subheader("📱 By Platform")
-        st.caption("Player distribution between Android and iOS")
+        with col_l:
+            st.subheader("📱 By Platform")
+            st.caption("Player distribution between Android and iOS")
+            try:
+                p_df = run_query(f"""
+                    SELECT PLATFORM, COUNT(DISTINCT USER_ID) as PLAYERS
+                    FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+                    GROUP BY PLATFORM
+                """)
+                if not p_df.empty:
+                    st.bar_chart(p_df.set_index('PLATFORM')['PLAYERS'])
+            except:
+                st.info("No data available")
+
+        with col_r:
+            st.subheader("📦 By App Version")
+            st.caption("Which versions players are using")
+            try:
+                v_df = run_query(f"""
+                    SELECT CLIENT_VERSION as VERSION, COUNT(DISTINCT USER_ID) as PLAYERS
+                    FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+                    GROUP BY CLIENT_VERSION ORDER BY PLAYERS DESC
+                """)
+                if not v_df.empty:
+                    st.bar_chart(v_df.set_index('VERSION')['PLAYERS'])
+            except:
+                st.info("No data available")
+
+        st.markdown("---")
+
+        st.subheader("🌍 By Country (Top 10)")
+        st.caption("Geographic distribution of players")
         try:
-            p_df = run_query(f"""
-                SELECT PLATFORM, COUNT(DISTINCT USER_ID) as PLAYERS
+            c_df = run_query(f"""
+                SELECT USER_COUNTRY as COUNTRY, COUNT(DISTINCT USER_ID) as PLAYERS
                 FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                GROUP BY PLATFORM
+                GROUP BY USER_COUNTRY ORDER BY PLAYERS DESC LIMIT 10
             """)
-            if not p_df.empty:
-                st.bar_chart(p_df.set_index('PLATFORM')['PLAYERS'])
+            if not c_df.empty:
+                st.bar_chart(c_df.set_index('COUNTRY')['PLAYERS'])
+                st.download_button(
+                    "📥 Export Countries to CSV",
+                    export_to_csv(c_df, "countries"),
+                    "countries_data.csv",
+                    "text/csv",
+                    key="download_countries"
+                )
         except:
             st.info("No data available")
 
-    with col_r:
-        st.subheader("📦 By App Version")
-        st.caption("Which versions players are using")
-        try:
-            v_df = run_query(f"""
-                SELECT CLIENT_VERSION as VERSION, COUNT(DISTINCT USER_ID) as PLAYERS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                GROUP BY CLIENT_VERSION ORDER BY PLAYERS DESC
-            """)
-            if not v_df.empty:
-                st.bar_chart(v_df.set_index('VERSION')['PLAYERS'])
-        except:
-            st.info("No data available")
+        st.markdown("---")
 
-    st.markdown("---")
-
-    st.subheader("🌍 By Country (Top 10)")
-    st.caption("Geographic distribution of players")
-    try:
-        c_df = run_query(f"""
-            SELECT USER_COUNTRY as COUNTRY, COUNT(DISTINCT USER_ID) as PLAYERS
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            GROUP BY USER_COUNTRY ORDER BY PLAYERS DESC LIMIT 10
-        """)
-        if not c_df.empty:
-            st.bar_chart(c_df.set_index('COUNTRY')['PLAYERS'])
-    except:
-        st.info("No data available")
-
-    st.markdown("---")
-
-    col_h, col_d = st.columns(2)
+        col_h, col_d = st.columns(2)
 
     with col_h:
         st.subheader("🕐 Activity by Hour")
-        st.caption("When players are most active during the day (UTC +5)")
+        st.caption(f"When players are most active ({selected_tz})")
         try:
             h_df = run_query(f"""
-    SELECT
-        HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP)) as HOUR,
-        COUNT(*) as ACTIONS
-    FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-    GROUP BY HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP))
-    ORDER BY HOUR
-"""
-)
+                SELECT
+                    HOUR(DATEADD(hour, {tz_offset}, EVENT_TIMESTAMP)) as HOUR,
+                    COUNT(*) as ACTIONS
+                FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
+                GROUP BY HOUR(DATEADD(hour, {tz_offset}, EVENT_TIMESTAMP))
+                ORDER BY HOUR
+            """)
             if not h_df.empty:
                 st.bar_chart(h_df.set_index('HOUR')['ACTIONS'])
         except:
@@ -828,26 +847,34 @@ with tab5:
     st.subheader("🎯 In-Game Player Actions")
     st.caption("All player interactions: launches, completions, purchases, and more")
 
-    try:
-        e_df = run_query(f"""
-            SELECT EVENT_NAME, COUNT(*) as COUNT
-            FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-            GROUP BY EVENT_NAME ORDER BY COUNT DESC LIMIT 20
-        """)
-        if not e_df.empty:
-            e_df['Action'] = e_df['EVENT_NAME'].apply(get_friendly_name)
-            e_df['Total'] = e_df['COUNT']
+    with st.spinner("Loading player actions..."):
+        try:
+            e_df = run_query(f"""
+                SELECT EVENT_NAME, COUNT(*) as COUNT
+                FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
+                GROUP BY EVENT_NAME ORDER BY COUNT DESC LIMIT 20
+            """)
+            if not e_df.empty:
+                e_df['Action'] = e_df['EVENT_NAME'].apply(get_friendly_name)
+                e_df['Total'] = e_df['COUNT']
 
-            st.dataframe(
-                e_df[['Action', 'EVENT_NAME', 'Total']].rename(columns={'EVENT_NAME': 'Event Code'}),
-                use_container_width=True,
-                hide_index=True
-            )
+                st.dataframe(
+                    e_df[['Action', 'EVENT_NAME', 'Total']].rename(columns={'EVENT_NAME': 'Event Code'}),
+                    use_container_width=True,
+                    hide_index=True
+                )
+                st.download_button(
+                    "📥 Export Actions to CSV",
+                    export_to_csv(e_df[['Action', 'EVENT_NAME', 'Total']], "actions"),
+                    "player_actions_data.csv",
+                    "text/csv",
+                    key="download_actions"
+                )
 
-            st.subheader("📊 Top Player Actions")
-            st.bar_chart(e_df.set_index('Action')['Total'])
-    except:
-        st.info("No action data available")
+                st.subheader("📊 Top Player Actions")
+                st.bar_chart(e_df.set_index('Action')['Total'])
+        except:
+            st.info("No action data available")
 
     st.markdown("---")
 
@@ -866,27 +893,35 @@ with tab5:
             selected_event = event_options[selected_friendly]
 
             if selected_event:
-                event_detail = run_query(f"""
-                    SELECT
-                        DATE(EVENT_TIMESTAMP) as DATE,
-                        COUNT(*) as COUNT,
-                        COUNT(DISTINCT USER_ID) as UNIQUE_USERS
-                    FROM {DB}.ACCOUNT_EVENTS
-                    WHERE GAME_ID = {GAME_ID}
-                    AND EVENT_NAME = '{selected_event}'
-                    AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-                    GROUP BY DATE(EVENT_TIMESTAMP)
-                    ORDER BY DATE
-                """)
-                if not event_detail.empty:
-                    col_e1, col_e2 = st.columns(2)
-                    with col_e1:
-                        st.metric("📊 Total Count", f"{event_detail['COUNT'].sum():,}", help="How many times this action occurred")
-                    with col_e2:
-                        st.metric("👥 Unique Players", f"{event_detail['UNIQUE_USERS'].sum():,}", help="How many different players performed this action")
+                with st.spinner(f"Loading {selected_friendly} data..."):
+                    event_detail = run_query(f"""
+                        SELECT
+                            DATE(EVENT_TIMESTAMP) as DATE,
+                            COUNT(*) as COUNT,
+                            COUNT(DISTINCT USER_ID) as UNIQUE_USERS
+                        FROM {DB}.ACCOUNT_EVENTS
+                        WHERE GAME_ID = {GAME_ID}
+                        AND EVENT_NAME = '{selected_event}'
+                        AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
+                        GROUP BY DATE(EVENT_TIMESTAMP)
+                        ORDER BY DATE
+                    """)
+                    if not event_detail.empty:
+                        col_e1, col_e2 = st.columns(2)
+                        with col_e1:
+                            st.metric("📊 Total Count", f"{event_detail['COUNT'].sum():,}", help="How many times this action occurred")
+                        with col_e2:
+                            st.metric("👥 Unique Players", f"{event_detail['UNIQUE_USERS'].sum():,}", help="How many different players performed this action")
 
-                    st.subheader(f"📈 Trend: {selected_friendly}")
-                    st.line_chart(event_detail.set_index('DATE')['COUNT'])
+                        st.subheader(f"📈 Trend: {selected_friendly}")
+                        st.line_chart(event_detail.set_index('DATE')['COUNT'])
+                        st.download_button(
+                            f"📥 Export {selected_friendly} to CSV",
+                            export_to_csv(event_detail, "action_detail"),
+                            f"{selected_event}_data.csv",
+                            "text/csv",
+                            key="download_action_detail"
+                        )
     except:
         st.info("No data available")
 
@@ -896,74 +931,82 @@ with tab5:
     st.subheader("🔔 Notification Permission")
     st.caption("How players respond to notification permission request")
 
-    try:
-        notif_df = run_query(f"""
-            SELECT
-                EVENT_JSON:permissionGranted::INT as GRANTED,
-                COUNT(*) as COUNT,
-                COUNT(DISTINCT USER_ID) as UNIQUE_USERS
-            FROM {DB}.ACCOUNT_EVENTS
-            WHERE GAME_ID = {GAME_ID}
-            AND EVENT_NAME = 'NotificationPermissionGranted'
-            AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-            GROUP BY EVENT_JSON:permissionGranted::INT
-        """)
-
-        if not notif_df.empty:
-            col_n1, col_n2, col_n3 = st.columns(3)
-
-            # Total requests
-            total_count = int(notif_df['COUNT'].sum())
-            total_users = int(notif_df['UNIQUE_USERS'].sum())
-
-            # Granted (1)
-            granted_row = notif_df[notif_df['GRANTED'] == 1]
-            granted_count = int(granted_row['COUNT'].iloc[0]) if not granted_row.empty else 0
-            granted_users = int(granted_row['UNIQUE_USERS'].iloc[0]) if not granted_row.empty else 0
-
-            # Denied (0)
-            denied_row = notif_df[notif_df['GRANTED'] == 0]
-            denied_count = int(denied_row['COUNT'].iloc[0]) if not denied_row.empty else 0
-            denied_users = int(denied_row['UNIQUE_USERS'].iloc[0]) if not denied_row.empty else 0
-
-            # Calculate rate
-            grant_rate = round(granted_count * 100 / total_count, 1) if total_count > 0 else 0
-
-            with col_n1:
-                st.metric("📊 Total Requests", f"{total_count:,}", help="Total notification permission requests")
-                st.metric("👥 Unique Players", f"{total_users:,}")
-
-            with col_n2:
-                st.metric("✅ Granted", f"{granted_count:,}", help="Players who allowed notifications")
-                st.metric("👥 Unique Players", f"{granted_users:,}")
-
-            with col_n3:
-                st.metric("❌ Denied", f"{denied_count:,}", help="Players who denied notifications")
-                st.metric("👥 Unique Players", f"{denied_users:,}")
-
-            st.markdown(f"**Grant Rate: {grant_rate}%** of players allowed notifications")
-
-            # Daily trend
-            notif_trend = run_query(f"""
+    with st.spinner("Loading notification data..."):
+        try:
+            notif_df = run_query(f"""
                 SELECT
-                    DATE(EVENT_TIMESTAMP) as DATE,
-                    SUM(CASE WHEN EVENT_JSON:permissionGranted::INT = 1 THEN 1 ELSE 0 END) as GRANTED,
-                    SUM(CASE WHEN EVENT_JSON:permissionGranted::INT = 0 THEN 1 ELSE 0 END) as DENIED
+                    EVENT_JSON:permissionGranted::INT as GRANTED,
+                    COUNT(*) as COUNT,
+                    COUNT(DISTINCT USER_ID) as UNIQUE_USERS
                 FROM {DB}.ACCOUNT_EVENTS
                 WHERE GAME_ID = {GAME_ID}
                 AND EVENT_NAME = 'NotificationPermissionGranted'
                 AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-                GROUP BY DATE(EVENT_TIMESTAMP)
-                ORDER BY DATE
+                GROUP BY EVENT_JSON:permissionGranted::INT
             """)
 
-            if not notif_trend.empty:
-                st.subheader("📈 Daily Notification Permission Trend")
-                st.line_chart(notif_trend.set_index('DATE')[['GRANTED', 'DENIED']])
-        else:
-            st.info("No notification permission data for selected period")
-    except:
-        st.info("No notification permission data available")
+            if not notif_df.empty:
+                col_n1, col_n2, col_n3 = st.columns(3)
+
+                # Total requests
+                total_count = int(notif_df['COUNT'].sum())
+                total_users = int(notif_df['UNIQUE_USERS'].sum())
+
+                # Granted (1)
+                granted_row = notif_df[notif_df['GRANTED'] == 1]
+                granted_count = int(granted_row['COUNT'].iloc[0]) if not granted_row.empty else 0
+                granted_users = int(granted_row['UNIQUE_USERS'].iloc[0]) if not granted_row.empty else 0
+
+                # Denied (0)
+                denied_row = notif_df[notif_df['GRANTED'] == 0]
+                denied_count = int(denied_row['COUNT'].iloc[0]) if not denied_row.empty else 0
+                denied_users = int(denied_row['UNIQUE_USERS'].iloc[0]) if not denied_row.empty else 0
+
+                # Calculate rate
+                grant_rate = round(granted_count * 100 / total_count, 1) if total_count > 0 else 0
+
+                with col_n1:
+                    st.metric("📊 Total Requests", f"{total_count:,}", help="Total notification permission requests")
+                    st.metric("👥 Unique Players", f"{total_users:,}")
+
+                with col_n2:
+                    st.metric("✅ Granted", f"{granted_count:,}", help="Players who allowed notifications")
+                    st.metric("👥 Unique Players", f"{granted_users:,}")
+
+                with col_n3:
+                    st.metric("❌ Denied", f"{denied_count:,}", help="Players who denied notifications")
+                    st.metric("👥 Unique Players", f"{denied_users:,}")
+
+                st.markdown(f"**Grant Rate: {grant_rate}%** of players allowed notifications")
+
+                # Daily trend
+                notif_trend = run_query(f"""
+                    SELECT
+                        DATE(EVENT_TIMESTAMP) as DATE,
+                        SUM(CASE WHEN EVENT_JSON:permissionGranted::INT = 1 THEN 1 ELSE 0 END) as GRANTED,
+                        SUM(CASE WHEN EVENT_JSON:permissionGranted::INT = 0 THEN 1 ELSE 0 END) as DENIED
+                    FROM {DB}.ACCOUNT_EVENTS
+                    WHERE GAME_ID = {GAME_ID}
+                    AND EVENT_NAME = 'NotificationPermissionGranted'
+                    AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
+                    GROUP BY DATE(EVENT_TIMESTAMP)
+                    ORDER BY DATE
+                """)
+
+                if not notif_trend.empty:
+                    st.subheader("📈 Daily Notification Permission Trend")
+                    st.line_chart(notif_trend.set_index('DATE')[['GRANTED', 'DENIED']])
+                    st.download_button(
+                        "📥 Export Notifications to CSV",
+                        export_to_csv(notif_trend, "notifications"),
+                        "notification_permissions_data.csv",
+                        "text/csv",
+                        key="download_notifications"
+                    )
+            else:
+                st.info("No notification permission data for selected period")
+        except:
+            st.info("No notification permission data available")
 
     # Action reference
     with st.expander("📖 Action Reference"):
