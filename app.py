@@ -657,10 +657,14 @@ with tab4:
         st.caption("When players are most active during the day (UTC)")
         try:
             h_df = run_query(f"""
-                SELECT HOUR(EVENT_TIMESTAMP) as HOUR, COUNT(*) as ACTIONS
-                FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-                GROUP BY HOUR(EVENT_TIMESTAMP) ORDER BY HOUR
-            """)
+    SELECT
+        HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP)) as HOUR,
+        COUNT(*) as ACTIONS
+    FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
+    GROUP BY HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP))
+    ORDER BY HOUR
+"""
+)
             if not h_df.empty:
                 st.bar_chart(h_df.set_index('HOUR')['ACTIONS'])
         except:
