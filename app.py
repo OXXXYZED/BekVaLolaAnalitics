@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import snowflake.connector
-from io import BytesIO
 
 # Настройки страницы
 st.set_page_config(
@@ -156,61 +155,18 @@ except:
     version_filter = []
     version_str = ""
 
-# Country Filter
-st.sidebar.subheader("🌍 Country")
-try:
-    countries_df = run_query(f"""
-        SELECT DISTINCT USER_COUNTRY
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID} AND USER_COUNTRY IS NOT NULL
-        ORDER BY USER_COUNTRY
-    """)
-    countries_list = countries_df['USER_COUNTRY'].tolist()
-    country_filter = st.sidebar.multiselect("Select countries", countries_list, default=countries_list)
-    country_str = "','".join(country_filter)
-except:
-    country_filter = []
-    country_str = ""
-
 # Base WHERE clause
 WHERE = f"""
 WHERE GAME_ID = {GAME_ID}
 AND EVENT_DATE BETWEEN '{start_str}' AND '{end_str}'
 AND PLATFORM IN ('{platform_str}')
 AND CLIENT_VERSION IN ('{version_str}')
-AND USER_COUNTRY IN ('{country_str}')
 """
 
 WHERE_EVENTS = f"""
 WHERE GAME_ID = {GAME_ID}
 AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
 """
-
-# Previous period for delta calculations
-days_diff = (end_date - start_date).days if hasattr(end_date, 'days') else (datetime.combine(end_date, datetime.min.time()) - datetime.combine(start_date, datetime.min.time())).days
-prev_end = start_date - timedelta(days=1)
-prev_start = prev_end - timedelta(days=days_diff)
-prev_start_str = prev_start.strftime('%Y-%m-%d') if hasattr(prev_start, 'strftime') else prev_start.strftime('%Y-%m-%d')
-prev_end_str = prev_end.strftime('%Y-%m-%d') if hasattr(prev_end, 'strftime') else prev_end.strftime('%Y-%m-%d')
-
-WHERE_PREV = f"""
-WHERE GAME_ID = {GAME_ID}
-AND EVENT_DATE BETWEEN '{prev_start_str}' AND '{prev_end_str}'
-AND PLATFORM IN ('{platform_str}')
-AND CLIENT_VERSION IN ('{version_str}')
-AND USER_COUNTRY IN ('{country_str}')
-"""
-
-def calc_delta(current, previous):
-    """Calculate percentage change between periods"""
-    if previous and previous > 0:
-        delta = ((current - previous) / previous) * 100
-        return f"{delta:+.1f}%"
-    return None
-
-def export_to_csv(df, filename):
-    """Convert dataframe to CSV for download"""
-    return df.to_csv(index=False).encode('utf-8')
 
 # ============ TABS ============
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -224,176 +180,139 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # ============ TAB 1: OVERVIEW ============
 with tab1:
     st.subheader("📈 Key Metrics")
-    st.caption("Main player activity indicators for the selected period. Green/red shows change vs previous period.")
+    st.caption("Main player activity indicators for the selected period")
 
-    with st.spinner("Loading metrics..."):
-        col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4)
 
-        # All Users with delta
-        try:
-            all_users = run_query(f"""
-                SELECT COUNT(DISTINCT USER_ID) as TOTAL
+    # All Users
+    try:
+        all_users = run_query(f"""
+            SELECT COUNT(DISTINCT USER_ID) as TOTAL
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+        """)
+        col1.metric("👥 Total Players", f"{all_users['TOTAL'][0]:,}", help="Unique players in period")
+    except:
+        col1.metric("👥 Total Players", "N/A")
+
+    # DAU (average)
+    try:
+        dau_avg = run_query(f"""
+            SELECT ROUND(AVG(daily_users), 0) as AVG_DAU
+            FROM (
+                SELECT EVENT_DATE, COUNT(DISTINCT USER_ID) as daily_users
                 FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            """)
-            all_users_prev = run_query(f"""
-                SELECT COUNT(DISTINCT USER_ID) as TOTAL
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE_PREV}
-            """)
-            current = int(all_users['TOTAL'][0])
-            prev = int(all_users_prev['TOTAL'][0]) if not all_users_prev.empty else 0
-            col1.metric("👥 Total Players", f"{current:,}", delta=calc_delta(current, prev), help="Unique players in period")
-        except:
-            col1.metric("👥 Total Players", "N/A")
+                GROUP BY EVENT_DATE
+            )
+        """)
+        col2.metric("📊 Avg DAU", f"{int(dau_avg['AVG_DAU'][0]):,}", help="Average daily active users")
+    except:
+        col2.metric("📊 Avg DAU", "N/A")
 
-        # DAU (average) with delta
-        try:
-            dau_avg = run_query(f"""
-                SELECT ROUND(AVG(daily_users), 0) as AVG_DAU
-                FROM (
-                    SELECT EVENT_DATE, COUNT(DISTINCT USER_ID) as daily_users
-                    FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                    GROUP BY EVENT_DATE
-                )
-            """)
-            dau_avg_prev = run_query(f"""
-                SELECT ROUND(AVG(daily_users), 0) as AVG_DAU
-                FROM (
-                    SELECT EVENT_DATE, COUNT(DISTINCT USER_ID) as daily_users
-                    FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE_PREV}
-                    GROUP BY EVENT_DATE
-                )
-            """)
-            current = int(dau_avg['AVG_DAU'][0])
-            prev = int(dau_avg_prev['AVG_DAU'][0]) if not dau_avg_prev.empty and dau_avg_prev['AVG_DAU'][0] else 0
-            col2.metric("📊 Avg DAU", f"{current:,}", delta=calc_delta(current, prev), help="Average daily active users")
-        except:
-            col2.metric("📊 Avg DAU", "N/A")
+    # WAU
+    try:
+        wau = run_query(f"""
+            SELECT COUNT(DISTINCT USER_ID) as WAU
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+            AND EVENT_DATE >= DATEADD(day, -7, '{end_str}')
+        """)
+        col3.metric("📅 WAU", f"{wau['WAU'][0]:,}", help="Weekly active users")
+    except:
+        col3.metric("📅 WAU", "N/A")
 
-        # WAU
-        try:
-            wau = run_query(f"""
-                SELECT COUNT(DISTINCT USER_ID) as WAU
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                AND EVENT_DATE >= DATEADD(day, -7, '{end_str}')
-            """)
-            col3.metric("📅 WAU", f"{wau['WAU'][0]:,}", help="Weekly active users")
-        except:
-            col3.metric("📅 WAU", "N/A")
+    # MAU
+    try:
+        mau = run_query(f"""
+            SELECT COUNT(DISTINCT USER_ID) as MAU
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+        """)
+        col4.metric("📆 MAU", f"{mau['MAU'][0]:,}", help="Monthly active users")
+    except:
+        col4.metric("📆 MAU", "N/A")
 
-        # MAU
-        try:
-            mau = run_query(f"""
-                SELECT COUNT(DISTINCT USER_ID) as MAU
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            """)
-            col4.metric("📆 MAU", f"{mau['MAU'][0]:,}", help="Monthly active users")
-        except:
-            col4.metric("📆 MAU", "N/A")
+    # Second row metrics
+    col5, col6, col7, col8 = st.columns(4)
 
-        # Second row metrics
-        col5, col6, col7, col8 = st.columns(4)
+    # New Users
+    try:
+        new_users = run_query(f"""
+            SELECT COUNT(DISTINCT USER_ID) as NEW_USERS
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+            AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
+        """)
+        col5.metric("🆕 New Players", f"{new_users['NEW_USERS'][0]:,}", help="Players who started in this period")
+    except:
+        col5.metric("🆕 New Players", "N/A")
 
-        # New Users with delta
-        try:
-            new_users = run_query(f"""
-                SELECT COUNT(DISTINCT USER_ID) as NEW_USERS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
-            """)
-            new_users_prev = run_query(f"""
-                SELECT COUNT(DISTINCT USER_ID) as NEW_USERS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE_PREV}
-                AND PLAYER_START_DATE BETWEEN '{prev_start_str}' AND '{prev_end_str}'
-            """)
-            current = int(new_users['NEW_USERS'][0])
-            prev = int(new_users_prev['NEW_USERS'][0]) if not new_users_prev.empty else 0
-            col5.metric("🆕 New Players", f"{current:,}", delta=calc_delta(current, prev), help="Players who started in this period")
-        except:
-            col5.metric("🆕 New Players", "N/A")
+    # Sessions per DAU
+    try:
+        spd = run_query(f"""
+            SELECT ROUND(COUNT(DISTINCT SESSION_ID) * 1.0 / NULLIF(COUNT(DISTINCT USER_ID), 0), 2) as SPD
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+        """)
+        col6.metric("🔄 Sessions/Player", f"{spd['SPD'][0]}", help="Average sessions per player")
+    except:
+        col6.metric("🔄 Sessions/Player", "N/A")
 
-        # Sessions per DAU
-        try:
-            spd = run_query(f"""
-                SELECT ROUND(COUNT(DISTINCT SESSION_ID) * 1.0 / NULLIF(COUNT(DISTINCT USER_ID), 0), 2) as SPD
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            """)
-            col6.metric("🔄 Sessions/Player", f"{spd['SPD'][0]}", help="Average sessions per player")
-        except:
-            col6.metric("🔄 Sessions/Player", "N/A")
+    # Avg Session Length
+    try:
+        session_len = run_query(f"""
+            SELECT ROUND(AVG(TOTAL_TIME_MS) / 60000, 2) as AVG_MIN
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+            AND TOTAL_TIME_MS > 0
+        """)
+        col7.metric("⏱️ Avg Session", f"{session_len['AVG_MIN'][0]} min", help="Average session duration")
+    except:
+        col7.metric("⏱️ Avg Session", "N/A")
 
-        # Avg Session Length with delta
-        try:
-            session_len = run_query(f"""
-                SELECT ROUND(AVG(TOTAL_TIME_MS) / 60000, 2) as AVG_MIN
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                AND TOTAL_TIME_MS > 0
-            """)
-            session_len_prev = run_query(f"""
-                SELECT ROUND(AVG(TOTAL_TIME_MS) / 60000, 2) as AVG_MIN
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE_PREV}
-                AND TOTAL_TIME_MS > 0
-            """)
-            current = float(session_len['AVG_MIN'][0])
-            prev = float(session_len_prev['AVG_MIN'][0]) if not session_len_prev.empty and session_len_prev['AVG_MIN'][0] else 0
-            col7.metric("⏱️ Avg Session", f"{current} min", delta=calc_delta(current, prev), help="Average session duration")
-        except:
-            col7.metric("⏱️ Avg Session", "N/A")
+    # Total Sessions
+    try:
+        total_sessions = run_query(f"""
+            SELECT COUNT(DISTINCT SESSION_ID) as SESSIONS
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+        """)
+        col8.metric("🎮 Total Sessions", f"{total_sessions['SESSIONS'][0]:,}", help="Total game sessions")
+    except:
+        col8.metric("🎮 Total Sessions", "N/A")
 
-        # Total Sessions with delta
-        try:
-            total_sessions = run_query(f"""
-                SELECT COUNT(DISTINCT SESSION_ID) as SESSIONS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            """)
-            total_sessions_prev = run_query(f"""
-                SELECT COUNT(DISTINCT SESSION_ID) as SESSIONS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE_PREV}
-            """)
-            current = int(total_sessions['SESSIONS'][0])
-            prev = int(total_sessions_prev['SESSIONS'][0]) if not total_sessions_prev.empty else 0
-            col8.metric("🎮 Total Sessions", f"{current:,}", delta=calc_delta(current, prev), help="Total game sessions")
-        except:
-            col8.metric("🎮 Total Sessions", "N/A")
+    # Third row
+    col9, col10, col11, col12 = st.columns(4)
 
-        # Third row
-        col9, col10, col11, col12 = st.columns(4)
+    # Actions per User
+    try:
+        epu = run_query(f"""
+            SELECT ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT USER_ID), 0), 1) as EPU
+            FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
+        """)
+        col9.metric("🎯 Actions/Player", f"{epu['EPU'][0]}", help="Average actions per player")
+    except:
+        col9.metric("🎯 Actions/Player", "N/A")
 
-        # Actions per User
-        try:
-            epu = run_query(f"""
-                SELECT ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT USER_ID), 0), 1) as EPU
-                FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-            """)
-            col9.metric("🎯 Actions/Player", f"{epu['EPU'][0]}", help="Average actions per player")
-        except:
-            col9.metric("🎯 Actions/Player", "N/A")
+    # Total Actions
+    try:
+        total_events = run_query(f"""
+            SELECT COUNT(*) as EVENTS
+            FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
+        """)
+        col10.metric("📊 Total Actions", f"{total_events['EVENTS'][0]:,}", help="Total in-game actions")
+    except:
+        col10.metric("📊 Total Actions", "N/A")
 
-        # Total Actions
-        try:
-            total_events = run_query(f"""
-                SELECT COUNT(*) as EVENTS
-                FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-            """)
-            col10.metric("📊 Total Actions", f"{total_events['EVENTS'][0]:,}", help="Total in-game actions")
-        except:
-            col10.metric("📊 Total Actions", "N/A")
-
-        # Stickiness
-        try:
-            if mau['MAU'][0] > 0 and dau_avg['AVG_DAU'][0]:
-                stickiness = round(dau_avg['AVG_DAU'][0] / mau['MAU'][0] * 100, 1)
-                col11.metric("📌 Stickiness", f"{stickiness}%", help="DAU/MAU - how often players return")
-            else:
-                col11.metric("📌 Stickiness", "N/A")
-        except:
+    # Stickiness
+    try:
+        if mau['MAU'][0] > 0 and dau_avg['AVG_DAU'][0]:
+            stickiness = round(dau_avg['AVG_DAU'][0] / mau['MAU'][0] * 100, 1)
+            col11.metric("📌 Stickiness", f"{stickiness}%", help="DAU/MAU - how often players return")
+        else:
             col11.metric("📌 Stickiness", "N/A")
+    except:
+        col11.metric("📌 Stickiness", "N/A")
 
-        # Actions per Session
-        try:
-            eps = run_query(f"""
-                SELECT ROUND(AVG(NUMBER_OF_EVENTS), 1) as EPS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            """)
+    # Actions per Session
+    try:
+        eps = run_query(f"""
+            SELECT ROUND(AVG(NUMBER_OF_EVENTS), 1) as EPS
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+        """)
         col12.metric("🔢 Actions/Session", f"{eps['EPS'][0]}", help="Average actions per session")
     except:
         col12.metric("🔢 Actions/Session", "N/A")
@@ -403,78 +322,53 @@ with tab1:
     # DAU Chart
     st.subheader("📊 Daily Active Users (DAU)")
     st.caption("Unique players who played each day")
-    with st.spinner("Loading DAU chart..."):
-        try:
-            dau_df = run_query(f"""
-                SELECT EVENT_DATE, COUNT(DISTINCT USER_ID) as USERS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                GROUP BY EVENT_DATE ORDER BY EVENT_DATE
-            """)
-            if not dau_df.empty:
-                st.line_chart(dau_df.set_index('EVENT_DATE')['USERS'])
-                st.download_button(
-                    "📥 Export DAU to CSV",
-                    export_to_csv(dau_df, "dau"),
-                    "dau_data.csv",
-                    "text/csv",
-                    key="download_dau"
-                )
-        except:
-            st.info("No data available")
+    try:
+        dau_df = run_query(f"""
+            SELECT EVENT_DATE, COUNT(DISTINCT USER_ID) as USERS
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+            GROUP BY EVENT_DATE ORDER BY EVENT_DATE
+        """)
+        if not dau_df.empty:
+            st.line_chart(dau_df.set_index('EVENT_DATE')['USERS'])
+    except:
+        st.info("No data available")
 
     # New Users Chart
     st.subheader("👥 Daily New Players")
     st.caption("Players who launched the game for the first time")
-    with st.spinner("Loading new players chart..."):
-        try:
-            new_df = run_query(f"""
-                SELECT PLAYER_START_DATE as DATE, COUNT(DISTINCT USER_ID) as NEW_USERS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
-                GROUP BY PLAYER_START_DATE ORDER BY PLAYER_START_DATE
-            """)
-            if not new_df.empty:
-                st.line_chart(new_df.set_index('DATE')['NEW_USERS'])
-                st.download_button(
-                    "📥 Export New Players to CSV",
-                    export_to_csv(new_df, "new_players"),
-                    "new_players_data.csv",
-                    "text/csv",
-                    key="download_new_players"
-                )
-        except:
-            st.info("No data available")
+    try:
+        new_df = run_query(f"""
+            SELECT PLAYER_START_DATE as DATE, COUNT(DISTINCT USER_ID) as NEW_USERS
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+            AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
+            GROUP BY PLAYER_START_DATE ORDER BY PLAYER_START_DATE
+        """)
+        if not new_df.empty:
+            st.line_chart(new_df.set_index('DATE')['NEW_USERS'])
+    except:
+        st.info("No data available")
 
     # Session Length
     st.subheader("⏱️ Average Session Length (minutes)")
     st.caption("How long players spend in the game per session")
-    with st.spinner("Loading session chart..."):
-        try:
-            sess_df = run_query(f"""
-                SELECT EVENT_DATE, ROUND(AVG(TOTAL_TIME_MS) / 60000, 2) as AVG_MIN
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                AND TOTAL_TIME_MS > 0
-                GROUP BY EVENT_DATE ORDER BY EVENT_DATE
-            """)
-            if not sess_df.empty:
-                st.line_chart(sess_df.set_index('EVENT_DATE')['AVG_MIN'])
-                st.download_button(
-                    "📥 Export Session Length to CSV",
-                    export_to_csv(sess_df, "sessions"),
-                    "session_length_data.csv",
-                    "text/csv",
-                    key="download_sessions"
-                )
-        except:
-            st.info("No data available")
+    try:
+        sess_df = run_query(f"""
+            SELECT EVENT_DATE, ROUND(AVG(TOTAL_TIME_MS) / 60000, 2) as AVG_MIN
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
+            AND TOTAL_TIME_MS > 0
+            GROUP BY EVENT_DATE ORDER BY EVENT_DATE
+        """)
+        if not sess_df.empty:
+            st.line_chart(sess_df.set_index('EVENT_DATE')['AVG_MIN'])
+    except:
+        st.info("No data available")
 
 # ============ TAB 2: RETENTION ============
 with tab2:
     st.subheader("🔄 Player Retention Analysis")
     st.caption("What percentage of players return to the game N days after first launch")
 
-    with st.spinner("Loading retention metrics..."):
-        col_ret1, col_ret2, col_ret3, col_ret4 = st.columns(4)
+    col_ret1, col_ret2, col_ret3, col_ret4 = st.columns(4)
 
     # Day 1
     try:
@@ -570,64 +464,53 @@ with tab2:
     st.subheader("📉 Retention Curve")
     st.caption("Shows how the percentage of active players changes each day after first launch. Day 0 = 100% (all new players)")
 
-    with st.spinner("Loading retention curve..."):
-        try:
-            retention_df = run_query(f"""
-                WITH first_day AS (
-                    SELECT USER_ID, MIN(EVENT_DATE) as first_date
-                    FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-                    WHERE GAME_ID = {GAME_ID}
-                    GROUP BY USER_ID
-                ),
-                cohort_size AS (
-                    SELECT COUNT(DISTINCT USER_ID) as total_users
-                    FROM first_day
-                    WHERE first_date BETWEEN '{start_str}' AND DATEADD(day, -30, '{end_str}')
-                ),
-                user_activity AS (
-                    SELECT
-                        f.USER_ID,
-                        DATEDIFF(day, f.first_date, s.EVENT_DATE) as days_since_start
-                    FROM first_day f
-                    JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s
-                        ON f.USER_ID = s.USER_ID AND s.GAME_ID = {GAME_ID}
-                    WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -30, '{end_str}')
-                )
+    try:
+        retention_df = run_query(f"""
+            WITH first_day AS (
+                SELECT USER_ID, MIN(EVENT_DATE) as first_date
+                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+                WHERE GAME_ID = {GAME_ID}
+                GROUP BY USER_ID
+            ),
+            cohort_size AS (
+                SELECT COUNT(DISTINCT USER_ID) as total_users
+                FROM first_day
+                WHERE first_date BETWEEN '{start_str}' AND DATEADD(day, -30, '{end_str}')
+            ),
+            user_activity AS (
                 SELECT
-                    days_since_start as DAY,
-                    ROUND(COUNT(DISTINCT USER_ID) * 100.0 / (SELECT total_users FROM cohort_size), 1) as RETENTION
-                FROM user_activity
-                WHERE days_since_start BETWEEN 0 AND 30
-                GROUP BY days_since_start
-                ORDER BY days_since_start
-            """)
-            if not retention_df.empty and len(retention_df) > 1:
-                # Ensure numeric types for chart
-                retention_df['DAY'] = pd.to_numeric(retention_df['DAY'], errors='coerce')
-                retention_df['RETENTION'] = pd.to_numeric(retention_df['RETENTION'], errors='coerce')
-                retention_df = retention_df.dropna()
-                st.line_chart(retention_df.set_index('DAY')['RETENTION'])
+                    f.USER_ID,
+                    DATEDIFF(day, f.first_date, s.EVENT_DATE) as days_since_start
+                FROM first_day f
+                JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s
+                    ON f.USER_ID = s.USER_ID AND s.GAME_ID = {GAME_ID}
+                WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -30, '{end_str}')
+            )
+            SELECT
+                days_since_start as DAY,
+                ROUND(COUNT(DISTINCT USER_ID) * 100.0 / (SELECT total_users FROM cohort_size), 1) as RETENTION
+            FROM user_activity
+            WHERE days_since_start BETWEEN 0 AND 30
+            GROUP BY days_since_start
+            ORDER BY days_since_start
+        """)
+        if not retention_df.empty and len(retention_df) > 1:
+            # Ensure numeric types for chart
+            retention_df['DAY'] = pd.to_numeric(retention_df['DAY'], errors='coerce')
+            retention_df['RETENTION'] = pd.to_numeric(retention_df['RETENTION'], errors='coerce')
+            retention_df = retention_df.dropna()
+            st.line_chart(retention_df.set_index('DAY')['RETENTION'])
 
-                col_exp, col_dl = st.columns([3, 1])
-                with col_exp:
-                    with st.expander("📊 Retention Curve Details"):
-                        st.dataframe(
-                            retention_df.rename(columns={'DAY': 'Day', 'RETENTION': 'Retention %'}),
-                            use_container_width=True,
-                            hide_index=True
-                        )
-                with col_dl:
-                    st.download_button(
-                        "📥 Export Retention to CSV",
-                        export_to_csv(retention_df, "retention"),
-                        "retention_data.csv",
-                        "text/csv",
-                        key="download_retention"
-                    )
-            else:
-                st.info("Not enough data to build retention curve. Try selecting a wider date range.")
-        except Exception as e:
-            st.info("Not enough data to build retention curve")
+            with st.expander("📊 Retention Curve Details"):
+                st.dataframe(
+                    retention_df.rename(columns={'DAY': 'Day', 'RETENTION': 'Retention %'}),
+                    use_container_width=True,
+                    hide_index=True
+                )
+        else:
+            st.info("Not enough data to build retention curve. Try selecting a wider date range.")
+    except Exception as e:
+        st.info("Not enough data to build retention curve")
 
     st.markdown("---")
 
@@ -651,85 +534,69 @@ with tab3:
     st.subheader("🎮 Mini-Games Statistics")
     st.caption("Analysis of mini-game plays by players")
 
-    with st.spinner("Loading mini-games data..."):
-        try:
-            mg_df = run_query(f"""
-                SELECT
-                    EVENT_JSON:MiniGameName::STRING as MINI_GAME,
-                    COUNT(*) as PLAYS,
-                    ROUND(AVG(EVENT_JSON:duration::FLOAT), 2) as AVG_DURATION_SEC,
-                    ROUND(SUM(CASE WHEN EVENT_JSON:isComplated::INT = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as COMPLETION_RATE
-                FROM {DB}.ACCOUNT_EVENTS
-                WHERE GAME_ID = {GAME_ID} AND EVENT_NAME = 'playedMiniGameStatus'
-                AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-                GROUP BY EVENT_JSON:MiniGameName::STRING ORDER BY PLAYS DESC
-            """)
-            if not mg_df.empty:
-                mg_display = mg_df.rename(columns={
-                    'MINI_GAME': 'Mini-Game',
-                    'PLAYS': 'Plays',
-                    'AVG_DURATION_SEC': 'Avg Duration (sec)',
-                    'COMPLETION_RATE': 'Completion %'
-                })
-                st.dataframe(mg_display, use_container_width=True, hide_index=True)
-                st.download_button(
-                    "📥 Export Mini-Games to CSV",
-                    export_to_csv(mg_df, "minigames"),
-                    "minigames_data.csv",
-                    "text/csv",
-                    key="download_minigames"
-                )
+    try:
+        mg_df = run_query(f"""
+            SELECT
+                EVENT_JSON:MiniGameName::STRING as MINI_GAME,
+                COUNT(*) as PLAYS,
+                ROUND(AVG(EVENT_JSON:duration::FLOAT), 2) as AVG_DURATION_SEC,
+                ROUND(SUM(CASE WHEN EVENT_JSON:isComplated::INT = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as COMPLETION_RATE
+            FROM {DB}.ACCOUNT_EVENTS
+            WHERE GAME_ID = {GAME_ID} AND EVENT_NAME = 'playedMiniGameStatus'
+            AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
+            GROUP BY EVENT_JSON:MiniGameName::STRING ORDER BY PLAYS DESC
+        """)
+        if not mg_df.empty:
+            mg_display = mg_df.rename(columns={
+                'MINI_GAME': 'Mini-Game',
+                'PLAYS': 'Plays',
+                'AVG_DURATION_SEC': 'Avg Duration (sec)',
+                'COMPLETION_RATE': 'Completion %'
+            })
+            st.dataframe(mg_display, use_container_width=True, hide_index=True)
 
-                col_mg1, col_mg2 = st.columns(2)
-                with col_mg1:
-                    st.subheader("🎯 Mini-Game Popularity")
-                    st.caption("How many times each mini-game was played")
-                    st.bar_chart(mg_df.set_index('MINI_GAME')['PLAYS'])
-                with col_mg2:
-                    st.subheader("✅ Completion Rate")
-                    st.caption("Percentage of players who completed the mini-game")
-                    st.bar_chart(mg_df.set_index('MINI_GAME')['COMPLETION_RATE'])
-            else:
-                st.info("No mini-game data for selected period")
-        except:
-            st.info("No mini-game data available")
+            col_mg1, col_mg2 = st.columns(2)
+            with col_mg1:
+                st.subheader("🎯 Mini-Game Popularity")
+                st.caption("How many times each mini-game was played")
+                st.bar_chart(mg_df.set_index('MINI_GAME')['PLAYS'])
+            with col_mg2:
+                st.subheader("✅ Completion Rate")
+                st.caption("Percentage of players who completed the mini-game")
+                st.bar_chart(mg_df.set_index('MINI_GAME')['COMPLETION_RATE'])
+        else:
+            st.info("No mini-game data for selected period")
+    except:
+        st.info("No mini-game data available")
 
     st.markdown("---")
 
     # Lobby Actions
     st.subheader("🏠 Lobby Actions")
     st.caption("What players do in the main menu")
-    with st.spinner("Loading lobby actions..."):
-        try:
-            lobby_df = run_query(f"""
-                SELECT
-                    EVENT_JSON:lobbyActionName::STRING as ACTION,
-                    COUNT(*) as COUNT,
-                    ROUND(SUM(CASE WHEN EVENT_JSON:isComplated::INT = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as COMPLETION_RATE
-                FROM {DB}.ACCOUNT_EVENTS
-                WHERE GAME_ID = {GAME_ID} AND EVENT_NAME = 'lobbyActionInExit'
-                AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-                GROUP BY EVENT_JSON:lobbyActionName::STRING ORDER BY COUNT DESC
-            """)
-            if not lobby_df.empty:
-                lobby_display = lobby_df.rename(columns={
-                    'ACTION': 'Action',
-                    'COUNT': 'Count',
-                    'COMPLETION_RATE': 'Completion %'
-                })
-                st.dataframe(lobby_display, use_container_width=True, hide_index=True)
-                st.download_button(
-                    "📥 Export Lobby Actions to CSV",
-                    export_to_csv(lobby_df, "lobby"),
-                    "lobby_actions_data.csv",
-                    "text/csv",
-                    key="download_lobby"
-                )
-                st.bar_chart(lobby_df.set_index('ACTION')['COUNT'])
-            else:
-                st.info("No lobby action data available")
-        except:
+    try:
+        lobby_df = run_query(f"""
+            SELECT
+                EVENT_JSON:lobbyActionName::STRING as ACTION,
+                COUNT(*) as COUNT,
+                ROUND(SUM(CASE WHEN EVENT_JSON:isComplated::INT = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as COMPLETION_RATE
+            FROM {DB}.ACCOUNT_EVENTS
+            WHERE GAME_ID = {GAME_ID} AND EVENT_NAME = 'lobbyActionInExit'
+            AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
+            GROUP BY EVENT_JSON:lobbyActionName::STRING ORDER BY COUNT DESC
+        """)
+        if not lobby_df.empty:
+            lobby_display = lobby_df.rename(columns={
+                'ACTION': 'Action',
+                'COUNT': 'Count',
+                'COMPLETION_RATE': 'Completion %'
+            })
+            st.dataframe(lobby_display, use_container_width=True, hide_index=True)
+            st.bar_chart(lobby_df.set_index('ACTION')['COUNT'])
+        else:
             st.info("No lobby action data available")
+    except:
+        st.info("No lobby action data available")
 
 # ============ TAB 4: BREAKDOWNS ============
 with tab4:
@@ -790,14 +657,10 @@ with tab4:
         st.caption("When players are most active during the day (UTC)")
         try:
             h_df = run_query(f"""
-    SELECT
-        HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP)) as HOUR,
-        COUNT(*) as ACTIONS
-    FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-    GROUP BY HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP))
-    ORDER BY HOUR
-"""
-)
+                SELECT HOUR(EVENT_TIMESTAMP) as HOUR, COUNT(*) as ACTIONS
+                FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
+                GROUP BY HOUR(EVENT_TIMESTAMP) ORDER BY HOUR
+            """)
             if not h_df.empty:
                 st.bar_chart(h_df.set_index('HOUR')['ACTIONS'])
         except:
