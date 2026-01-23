@@ -162,10 +162,17 @@ st.subheader("📱 Platformalar bo'yicha taqsimot")
 
 try:
     platform_df = run_query(f"""
-        SELECT PLATFORM, COUNT(DISTINCT USER_ID) as USERS
+        SELECT
+            CASE
+                WHEN PLATFORM = 'ANDROID' THEN 'Android'
+                WHEN PLATFORM = 'IOS' THEN 'iOS'
+                ELSE 'Boshqalar'
+            END AS PLATFORM,
+            COUNT(DISTINCT USER_ID) AS USERS
         FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
         WHERE GAME_ID = {GAME_ID}
         GROUP BY PLATFORM
+        ORDER BY USERS DESC
     """)
 
     if not platform_df.empty:
@@ -181,8 +188,8 @@ try:
                     field="PLATFORM",
                     type="nominal",
                     scale=alt.Scale(
-                        domain=['ANDROID', 'IOS'],
-                        range=[COLORS['success'], COLORS['secondary']]
+                        domain=['Android', 'iOS', 'Boshqalar'],
+                        range=[COLORS['success'], COLORS['secondary'], '#9E9E9E']
                     ),
                     legend=None
                 ),
@@ -192,6 +199,7 @@ try:
                     alt.Tooltip('PERCENT:Q', title='Foiz', format='.1f')
                 ]
             ).properties(height=300)
+
             st.altair_chart(pie_chart, use_container_width=True)
 
         with col_legend:
@@ -200,18 +208,28 @@ try:
                 platform = row['PLATFORM']
                 users = row['USERS']
                 percent = row['PERCENT']
-                color = COLORS['success'] if platform == 'ANDROID' else COLORS['secondary']
+
+                if platform == 'Android':
+                    color = COLORS['success']
+                elif platform == 'iOS':
+                    color = COLORS['secondary']
+                else:
+                    color = '#9E9E9E'
+
                 st.markdown(f"""
                 <div style="display: flex; align-items: center; margin-bottom: 15px;">
-                    <div style="width: 20px; height: 20px; background-color: {color}; border-radius: 4px; margin-right: 10px;"></div>
+                    <div style="width: 20px; height: 20px; background-color: {color};
+                        border-radius: 4px; margin-right: 10px;"></div>
                     <div>
                         <strong>{platform}</strong><br>
                         <span style="color: #666;">{users:,} ({percent}%)</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-except:
+
+except Exception as e:
     st.info("Ma'lumotlar mavjud emas")
+
 
 # ============ YANGI FOYDALANUVCHILAR ============
 st.markdown("---")
