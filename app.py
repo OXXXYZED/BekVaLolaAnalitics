@@ -12,6 +12,9 @@ st.set_page_config(
     layout="wide"
 )
 
+# Color palette
+COLORS = ['#ccd5ae', '#e9edc9', '#fefae0', '#faedcd', '#d4a373']
+
 # Check secrets exist
 if "snowflake" not in st.secrets:
     st.error("Snowflake credentials not found. Please configure secrets.")
@@ -180,13 +183,13 @@ def get_action_description(event_name):
 def create_bar_chart(df, x_col, y_col, x_title=None, y_title=None, horizontal=False):
     """Creates a bar chart with tooltip on hover"""
     if horizontal:
-        chart = alt.Chart(df).mark_bar(color='#F4A460').encode(
+        chart = alt.Chart(df).mark_bar(color=COLORS[4]).encode(
             x=alt.X(f'{y_col}:Q', title=y_title or y_col),
             y=alt.Y(f'{x_col}:N', title=x_title or x_col, sort='-x'),
             tooltip=[alt.Tooltip(f'{y_col}:Q', format=',', title='')]
         )
     else:
-        chart = alt.Chart(df).mark_bar(color='#F4A460').encode(
+        chart = alt.Chart(df).mark_bar(color=COLORS[4]).encode(
             x=alt.X(f'{x_col}:N', title=x_title or x_col, sort=None),
             y=alt.Y(f'{y_col}:Q', title=y_title or y_col),
             tooltip=[alt.Tooltip(f'{y_col}:Q', format=',', title='')]
@@ -195,7 +198,7 @@ def create_bar_chart(df, x_col, y_col, x_title=None, y_title=None, horizontal=Fa
 
 def create_time_bar_chart(df, x_col, y_col, x_title=None, y_title=None):
     """Creates a bar chart for time series data with tooltip on hover"""
-    chart = alt.Chart(df).mark_bar(color='#F4A460', size=20).encode(
+    chart = alt.Chart(df).mark_bar(color=COLORS[4], size=20).encode(
         x=alt.X(f'{x_col}:T',
                 title=x_title or x_col,
                 axis=alt.Axis(format='%Y-%m-%d', labelAngle=-45)),
@@ -1004,7 +1007,7 @@ with tab5:
                 chart = alt.Chart(notif_melted).mark_bar().encode(
                     x=alt.X('DATE:T', title='Date'),
                     y=alt.Y('Count:Q', title='Count'),
-                    color=alt.Color('Status:N', scale=alt.Scale(domain=['GRANTED', 'DENIED'], range=['#2ecc71', '#e74c3c'])),
+                    color=alt.Color('Status:N', scale=alt.Scale(domain=['GRANTED', 'DENIED'], range=[COLORS[0], COLORS[4]])),
                     tooltip=[alt.Tooltip('Count:Q', format=',', title='')]
                 ).properties(height=400)
                 st.altair_chart(chart, use_container_width=True)
