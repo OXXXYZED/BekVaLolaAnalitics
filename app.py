@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 from datetime import datetime, timedelta
 from decimal import Decimal
 import snowflake.connector
@@ -176,6 +177,33 @@ def get_action_description(event_name):
         return action[1]  # Return description
     return 'Custom event'
 
+def create_bar_chart(df, x_col, y_col, x_title=None, y_title=None, horizontal=False):
+    """Creates a bar chart with tooltip on hover"""
+    if horizontal:
+        chart = alt.Chart(df).mark_bar(color='#F4A460').encode(
+            x=alt.X(f'{y_col}:Q', title=y_title or y_col),
+            y=alt.Y(f'{x_col}:N', title=x_title or x_col, sort='-x'),
+            tooltip=[alt.Tooltip(f'{y_col}:Q', format=',', title='')]
+        )
+    else:
+        chart = alt.Chart(df).mark_bar(color='#F4A460').encode(
+            x=alt.X(f'{x_col}:N', title=x_title or x_col, sort=None),
+            y=alt.Y(f'{y_col}:Q', title=y_title or y_col),
+            tooltip=[alt.Tooltip(f'{y_col}:Q', format=',', title='')]
+        )
+    return chart.properties(height=400)
+
+def create_time_bar_chart(df, x_col, y_col, x_title=None, y_title=None):
+    """Creates a bar chart for time series data with tooltip on hover"""
+    chart = alt.Chart(df).mark_bar(color='#F4A460', size=20).encode(
+        x=alt.X(f'{x_col}:T',
+                title=x_title or x_col,
+                axis=alt.Axis(format='%Y-%m-%d', labelAngle=-45)),
+        y=alt.Y(f'{y_col}:Q', title=y_title or y_col),
+        tooltip=[alt.Tooltip(f'{y_col}:Q', format=',', title='')]
+    )
+    return chart.properties(height=400)
+
 # Подключение к Snowflake
 @st.cache_resource
 def get_connection():
@@ -227,13 +255,16 @@ st.sidebar.header("🔧 Filters")
 st.sidebar.subheader("📅 Date Range")
 date_option = st.sidebar.selectbox(
     "Select period",
-    ["Last 7 days", "Last 14 days", "Last 30 days", "Last 90 days", "Custom"],
-    index=2
+    ["All time", "Last 7 days", "Last 14 days", "Last 30 days", "Last 90 days", "Custom"],
+    index=0
 )
 
 if date_option == "Custom":
     start_date = st.sidebar.date_input("Start date", datetime.now() - timedelta(days=30))
     end_date = st.sidebar.date_input("End date", datetime.now())
+elif date_option == "All time":
+    end_date = datetime.now()
+    start_date = datetime(2020, 1, 1)  # Far back date to include all data
 else:
     days_map = {
         "Last 7 days": 7,
@@ -454,7 +485,8 @@ with tab1:
             GROUP BY EVENT_DATE ORDER BY EVENT_DATE
         """)
         if not dau_df.empty:
-            st.line_chart(dau_df.set_index('EVENT_DATE')['USERS'])
+            chart = create_time_bar_chart(dau_df, 'EVENT_DATE', 'USERS', 'Date', 'Users')
+            st.altair_chart(chart, use_container_width=True)
     except:
         st.info("No data available")
 
@@ -469,7 +501,8 @@ with tab1:
             GROUP BY PLAYER_START_DATE ORDER BY PLAYER_START_DATE
         """)
         if not new_df.empty:
-            st.line_chart(new_df.set_index('DATE')['NEW_USERS'])
+            chart = create_time_bar_chart(new_df, 'DATE', 'NEW_USERS', 'Date', 'New Users')
+            st.altair_chart(chart, use_container_width=True)
     except:
         st.info("No data available")
 
@@ -484,7 +517,8 @@ with tab1:
             GROUP BY EVENT_DATE ORDER BY EVENT_DATE
         """)
         if not sess_df.empty:
-            st.line_chart(sess_df.set_index('EVENT_DATE')['AVG_MIN'])
+            chart = create_time_bar_chart(sess_df, 'EVENT_DATE', 'AVG_MIN', 'Date', 'Minutes')
+            st.altair_chart(chart, use_container_width=True)
     except:
         st.info("No data available")
 
@@ -624,7 +658,8 @@ with tab2:
             retention_df['DAY'] = pd.to_numeric(retention_df['DAY'], errors='coerce')
             retention_df['RETENTION'] = pd.to_numeric(retention_df['RETENTION'], errors='coerce')
             retention_df = retention_df.dropna()
-            st.line_chart(retention_df.set_index('DAY')['RETENTION'])
+            chart = create_bar_chart(retention_df, 'DAY', 'RETENTION', 'Day', 'Retention %')
+            st.altair_chart(chart, use_container_width=True)
 
             with st.expander("📊 Retention Curve Details"):
                 st.dataframe(
@@ -685,11 +720,13 @@ with tab3:
             with col_mg1:
                 st.subheader("🎯 Mini-Game Popularity")
                 st.caption("How many times each mini-game was played")
-                st.bar_chart(mg_df.set_index('MINI_GAME')['PLAYS'])
+                chart = create_bar_chart(mg_df, 'MINI_GAME', 'PLAYS', 'Mini-Game', 'Plays', horizontal=True)
+                st.altair_chart(chart, use_container_width=True)
             with col_mg2:
                 st.subheader("✅ Completion Rate")
                 st.caption("Percentage of players who completed the mini-game")
-                st.bar_chart(mg_df.set_index('MINI_GAME')['COMPLETION_RATE'])
+                chart = create_bar_chart(mg_df, 'MINI_GAME', 'COMPLETION_RATE', 'Mini-Game', 'Completion %', horizontal=True)
+                st.altair_chart(chart, use_container_width=True)
         else:
             st.info("No mini-game data for selected period")
     except:
@@ -719,7 +756,8 @@ with tab3:
                 'COMPLETION_RATE': 'Completion %'
             })
             st.dataframe(lobby_display, use_container_width=True, hide_index=True)
-            st.bar_chart(lobby_df.set_index('ACTION')['COUNT'])
+            chart = create_bar_chart(lobby_df, 'ACTION', 'COUNT', 'Action', 'Count', horizontal=True)
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("No lobby action data available")
     except:
@@ -742,7 +780,8 @@ with tab4:
                 GROUP BY PLATFORM
             """)
             if not p_df.empty:
-                st.bar_chart(p_df.set_index('PLATFORM')['PLAYERS'])
+                chart = create_bar_chart(p_df, 'PLATFORM', 'PLAYERS', 'Platform', 'Players')
+                st.altair_chart(chart, use_container_width=True)
         except:
             st.info("No data available")
 
@@ -756,7 +795,8 @@ with tab4:
                 GROUP BY CLIENT_VERSION ORDER BY PLAYERS DESC
             """)
             if not v_df.empty:
-                st.bar_chart(v_df.set_index('VERSION')['PLAYERS'])
+                chart = create_bar_chart(v_df, 'VERSION', 'PLAYERS', 'Version', 'Players', horizontal=True)
+                st.altair_chart(chart, use_container_width=True)
         except:
             st.info("No data available")
 
@@ -771,7 +811,8 @@ with tab4:
             GROUP BY USER_COUNTRY ORDER BY PLAYERS DESC LIMIT 10
         """)
         if not c_df.empty:
-            st.bar_chart(c_df.set_index('COUNTRY')['PLAYERS'])
+            chart = create_bar_chart(c_df, 'COUNTRY', 'PLAYERS', 'Country', 'Players', horizontal=True)
+            st.altair_chart(chart, use_container_width=True)
     except:
         st.info("No data available")
 
@@ -784,16 +825,16 @@ with tab4:
         st.caption("When players are most active during the day (UTC +5)")
         try:
             h_df = run_query(f"""
-    SELECT
-        HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP)) as HOUR,
-        COUNT(*) as ACTIONS
-    FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-    GROUP BY HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP))
-    ORDER BY HOUR
-"""
-)
+                SELECT
+                    HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP)) as HOUR,
+                    COUNT(*) as ACTIONS
+                FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
+                GROUP BY HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP))
+                ORDER BY HOUR
+            """)
             if not h_df.empty:
-                st.bar_chart(h_df.set_index('HOUR')['ACTIONS'])
+                chart = create_bar_chart(h_df, 'HOUR', 'ACTIONS', 'Hour', 'Actions')
+                st.altair_chart(chart, use_container_width=True)
         except:
             st.info("No data available")
 
@@ -813,7 +854,8 @@ with tab4:
                 GROUP BY DAYOFWEEK(EVENT_DATE) ORDER BY day_num
             """)
             if not dow_df.empty:
-                st.bar_chart(dow_df.set_index('DAY')['PLAYERS'])
+                chart = create_bar_chart(dow_df, 'DAY', 'PLAYERS', 'Day', 'Players')
+                st.altair_chart(chart, use_container_width=True)
         except:
             st.info("No data available")
 
@@ -840,7 +882,8 @@ with tab5:
             )
 
             st.subheader("📊 Top Player Actions")
-            st.bar_chart(e_df.set_index('Action')['Total'])
+            chart = create_bar_chart(e_df, 'Action', 'Total', 'Action', 'Count', horizontal=True)
+            st.altair_chart(chart, use_container_width=True)
     except:
         st.info("No action data available")
 
@@ -881,7 +924,8 @@ with tab5:
                         st.metric("👥 Unique Players", f"{event_detail['UNIQUE_USERS'].sum():,}", help="How many different players performed this action")
 
                     st.subheader(f"📈 Trend: {selected_friendly}")
-                    st.line_chart(event_detail.set_index('DATE')['COUNT'])
+                    chart = create_time_bar_chart(event_detail, 'DATE', 'COUNT', 'Date', 'Count')
+                    st.altair_chart(chart, use_container_width=True)
     except:
         st.info("No data available")
 
@@ -954,7 +998,16 @@ with tab5:
 
             if not notif_trend.empty:
                 st.subheader("📈 Daily Notification Permission Trend")
-                st.line_chart(notif_trend.set_index('DATE')[['GRANTED', 'DENIED']])
+                # Melt data for grouped bar chart
+                notif_melted = notif_trend.melt(id_vars=['DATE'], value_vars=['GRANTED', 'DENIED'],
+                                                 var_name='Status', value_name='Count')
+                chart = alt.Chart(notif_melted).mark_bar().encode(
+                    x=alt.X('DATE:T', title='Date'),
+                    y=alt.Y('Count:Q', title='Count'),
+                    color=alt.Color('Status:N', scale=alt.Scale(domain=['GRANTED', 'DENIED'], range=['#2ecc71', '#e74c3c'])),
+                    tooltip=[alt.Tooltip('Count:Q', format=',', title='')]
+                ).properties(height=400)
+                st.altair_chart(chart, use_container_width=True)
         else:
             st.info("No notification permission data for selected period")
     except:
