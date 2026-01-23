@@ -163,17 +163,24 @@ st.subheader("📱 Platformalar bo'yicha taqsimot")
 try:
     platform_df = run_query(f"""
         SELECT
-            CASE
-                WHEN PLATFORM = 'ANDROID' THEN 'Android'
-                WHEN PLATFORM = 'IOS' THEN 'iOS'
-                ELSE 'Boshqalar'
-            END AS PLATFORM,
-            COUNT(DISTINCT USER_ID) AS USERS
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        GROUP BY PLATFORM
+            PLATFORM_GROUP AS PLATFORM,
+            SUM(USERS) AS USERS
+        FROM (
+            SELECT
+                CASE
+                    WHEN PLATFORM = 'ANDROID' THEN 'Android'
+                    WHEN PLATFORM = 'IOS' THEN 'iOS'
+                    ELSE 'Boshqalar'
+                END AS PLATFORM_GROUP,
+                COUNT(DISTINCT USER_ID) AS USERS
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+            WHERE GAME_ID = {GAME_ID}
+            GROUP BY PLATFORM
+        )
+        GROUP BY PLATFORM_GROUP
         ORDER BY USERS DESC
     """)
+
 
     if not platform_df.empty:
         total = platform_df['USERS'].sum()
