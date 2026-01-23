@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+from decimal import Decimal
 import snowflake.connector
 
 # Настройки страницы
@@ -10,59 +11,170 @@ st.set_page_config(
     layout="wide"
 )
 
-# Dictionary for friendly action names
+# Check secrets exist
+if "snowflake" not in st.secrets:
+    st.error("Snowflake credentials not found. Please configure secrets.")
+    st.stop()
+
+# Dictionary for friendly action names with descriptions
+# Format: 'event_name': ('Display Name', 'Description')
 ACTION_NAMES = {
     # Sessions
-    'sessionStart': '🚀 Game Start',
-    'sessionEnd': '🔚 Game End',
-    'appStart': '📱 App Launch',
-    'appQuit': '📴 App Close',
+    'sessionStart': ('🚀 Game Start', 'Player started a new game session'),
+    'sessionEnd': ('🔚 Game End', 'Player ended the game session'),
+    'appStart': ('📱 App Launch', 'Application was launched'),
+    'appQuit': ('📴 App Close', 'Application was closed'),
+    'sdkStart': ('⚡ SDK Start', 'Unity Analytics SDK initialized'),
+    'gameStarted': ('🎮 Game Started', 'Game started after loading'),
+    'gameEnded': ('🏁 Game Ended', 'Game session ended'),
+    'gameRunning': ('▶️ Game Running', 'Game is active and running'),
 
     # Mini-games
-    'playedMiniGameStatus': '🎮 Mini-game Played',
-    'miniGameStarted': '▶️ Mini-game Started',
-    'miniGameCompleted': '✅ Mini-game Completed',
-    'miniGameFailed': '❌ Mini-game Failed',
+    'playedMiniGameStatus': ('🎮 Mini-game Played', 'Player played a mini-game'),
+    'startMiniGame': ('🎯 Mini-game Start', 'Player started a mini-game'),
+    'miniGameStarted': ('▶️ Mini-game Started', 'Mini-game was launched'),
+    'miniGameCompleted': ('✅ Mini-game Completed', 'Mini-game completed successfully'),
+    'miniGameFailed': ('❌ Mini-game Failed', 'Mini-game was failed'),
 
     # Lobby & Navigation
-    'lobbyActionInExit': '🏠 Lobby Action',
-    'lobbyEnter': '🚪 Lobby Enter',
-    'lobbyExit': '🚶 Lobby Exit',
-    'sceneLoaded': '🎬 Scene Loaded',
+    'startLobbyAction': ('🏠 Lobby Action Start', 'Player started an action in lobby'),
+    'lobbyActionInExit': ('🚪 Lobby Action Exit', 'Player finished lobby action'),
+    'lobbyEnter': ('🚪 Lobby Enter', 'Player entered the lobby'),
+    'lobbyExit': ('🚶 Lobby Exit', 'Player exited the lobby'),
+    'sceneLoaded': ('🎬 Scene Loaded', 'Game scene was loaded'),
 
     # Progress & Achievements
-    'levelUp': '⬆️ Level Up',
-    'achievementUnlocked': '🏆 Achievement Unlocked',
-    'rewardClaimed': '🎁 Reward Claimed',
-    'questCompleted': '📋 Quest Completed',
+    'levelUp': ('⬆️ Level Up', 'Player reached a new level'),
+    'achievementUnlocked': ('🏆 Achievement Unlocked', 'Player unlocked an achievement'),
+    'rewardClaimed': ('🎁 Reward Claimed', 'Player claimed a reward'),
+    'questCompleted': ('📋 Quest Completed', 'Player completed a quest'),
 
     # Purchases & Monetization
-    'purchase': '💰 Purchase',
-    'iapPurchase': '💳 In-App Purchase',
-    'adWatched': '📺 Ad Watched',
-    'adSkipped': '⏭️ Ad Skipped',
+    'purchase': ('💰 Purchase', 'Player made a purchase'),
+    'transaction': ('💳 Transaction', 'Successful transaction'),
+    'transactionFailed': ('❌ Transaction Failed', 'Transaction failed'),
+    'iapPurchase': ('💳 In-App Purchase', 'In-app purchase made'),
+    'adWatched': ('📺 Ad Watched', 'Player watched an ad'),
+    'adSkipped': ('⏭️ Ad Skipped', 'Player skipped an ad'),
+    'testPremiumBought': ('👑 Premium Bought', 'Test premium purchase'),
 
     # Social
-    'shareClicked': '📤 Share Clicked',
-    'inviteSent': '✉️ Invite Sent',
+    'shareClicked': ('📤 Share Clicked', 'Player clicked the share button'),
+    'inviteSent': ('✉️ Invite Sent', 'Player sent an invite'),
 
     # Settings
-    'settingsChanged': '⚙️ Settings Changed',
-    'languageChanged': '🌐 Language Changed',
-    'soundToggled': '🔊 Sound Toggled',
+    'settingsChanged': ('⚙️ Settings Changed', 'Player changed settings'),
+    'languageChanged': ('🌐 Language Changed', 'Player changed language'),
+    'soundToggled': ('🔊 Sound Toggled', 'Player toggled sound on/off'),
 
     # Tutorial
-    'tutorialStarted': '📖 Tutorial Started',
-    'tutorialCompleted': '🎓 Tutorial Completed',
-    'tutorialSkipped': '⏩ Tutorial Skipped',
+    'tutorialStarted': ('📖 Tutorial Started', 'Player started the tutorial'),
+    'tutorialCompleted': ('🎓 Tutorial Completed', 'Player completed the tutorial'),
+    'tutorialSkipped': ('⏩ Tutorial Skipped', 'Player skipped the tutorial'),
 
     # Notifications
-    'NotificationPermissionGranted': '🔔 Notification Permission',
+    'NotificationPermissionGranted': ('🔔 Notification Permission', "Push Notificationni tasdiqlagan foydalanuvchilar soni"),
+    'NotificationPermissionDenied': ('🔕 Notification Denied', "Push notificationga ruxsat bermagan foydalanuvchilar"),
+    'notificationOpened': ('📬 Notification Opened', 'Player opened a notification'),
+    'notificationServices': ('🔔 Notification Services', 'Notification services active'),
+
+    # Player & Device
+    'newPlayer': ('🆕 New Player', 'New player registered'),
+    'clientDevice': ('📱 Client Device', 'Player device information'),
+
+    # Other
+    'testCustomEvent': ('🧪 Test Event', 'Test event'),
+    'outOfGameSend': ('📤 Out of Game Send', 'Data sent outside of game'),
 }
+
+# Dictionary for mini-game descriptions (from Unity Analytics Data Explorer)
+MINIGAME_DESCRIPTIONS = {
+    'AstroBek': "Astrobek o'yini",
+    'Badantarbiya': "Badantarbiya mashqlari",
+    'HiddeAndSikLolaRoom': "Berkinmachoq Lola xonasi",
+    'Market': "Market - bozor o'yini",
+    'Shapes': "Mini Game Sort - shakllarni saralash",
+    'NumbersShape': "Raqamlar shakli",
+    'Words': "So'zlar o'yini",
+    'MapMatchGame': "Xarita o'yini",
+    'FindHiddenLetters': "Yashiringan harflarni topish - So'zdagi yashiringan harfni topish",
+    'RocketGame': "Raketa o'yini",
+    'TacingLetter': "Harflarni yozishni o'rganish",
+    'Baroqvoy': "Baroqvoy - an'anaviy o'yin",
+    'Ballons': "Sharlarni yorish",
+    'HygieneTeath': "Tishlarni tozalash",
+    'HygieneHand': "Qo'llarni yuvish",
+    'BasketBall': "Basketbol o'yini",
+    'FootBall': "Futbol o'yini",
+}
+
+# Dictionary for lobby action descriptions (actual actions from database)
+LOBBY_ACTION_DESCRIPTIONS = {
+    'Sing': 'Character singing activity',
+    'Trampoline': 'Jumping on trampoline',
+    'Treadmill': 'Running on treadmill exercise',
+    'Flute': 'Playing the flute instrument',
+    'Pool': 'Swimming pool activity',
+    'Doira': 'Playing traditional Uzbek drum',
+    'Toilet_1': 'Using toilet (location 1)',
+    'Toilet_2': 'Using toilet (location 2)',
+    'Dutor': 'Playing traditional Uzbek dutor',
+    'Sink_1': 'Washing at sink (location 1)',
+    'Sink_2': 'Washing at sink (location 2)',
+    'Eat_0': 'Eating meal (option 1)',
+    'Eat_1': 'Eating meal (option 2)',
+    'Eat_2': 'Eating meal (option 3)',
+    'Eat_3': 'Eating meal (option 4)',
+    'Football': 'Playing football in lobby',
+    'Gitara': 'Playing guitar instrument',
+    'Sleep_0': 'Sleeping (bed 1)',
+    'Sleep_1': 'Sleeping (bed 2)',
+    'Sleep_2': 'Sleeping (bed 3)',
+    'Sleep_3': 'Sleeping (bed 4)',
+    'Basketball': 'Playing basketball in lobby',
+    'Telescope': 'Looking through telescope',
+    'Game': 'Starting a game',
+}
+
+def get_minigame_description(minigame_name):
+    """Returns mini-game description"""
+    if minigame_name is None:
+        return 'Unknown mini-game'
+    # Try exact match first
+    if minigame_name in MINIGAME_DESCRIPTIONS:
+        return MINIGAME_DESCRIPTIONS[minigame_name]
+    # Try partial match
+    for key, desc in MINIGAME_DESCRIPTIONS.items():
+        if key.lower() in str(minigame_name).lower():
+            return desc
+    return 'Educational mini-game for children'
+
+def get_lobby_action_description(action_name):
+    """Returns lobby action description"""
+    if action_name is None:
+        return 'Unknown action'
+    # Try exact match first
+    if action_name in LOBBY_ACTION_DESCRIPTIONS:
+        return LOBBY_ACTION_DESCRIPTIONS[action_name]
+    # Try partial match
+    for key, desc in LOBBY_ACTION_DESCRIPTIONS.items():
+        if key.lower() in str(action_name).lower():
+            return desc
+    return 'Lobby menu action'
 
 def get_friendly_name(event_name):
     """Returns friendly action name"""
-    return ACTION_NAMES.get(event_name, f'🎯 {event_name}')
+    action = ACTION_NAMES.get(event_name)
+    if action:
+        return action[0]  # Return display name
+    return f'🎯 {event_name}'
+
+def get_action_description(event_name):
+    """Returns action description"""
+    action = ACTION_NAMES.get(event_name)
+    if action:
+        return action[1]  # Return description
+    return 'Custom event'
 
 # Подключение к Snowflake
 @st.cache_resource
@@ -83,11 +195,19 @@ def run_query(query):
     columns = [desc[0] for desc in cur.description]
     data = cur.fetchall()
     df = pd.DataFrame(data, columns=columns)
-    # Convert numeric columns from Decimal/string to float
+
+    # Convert Decimal objects to float for chart compatibility
     for col in df.columns:
         if df[col].dtype == object:
+            # Check if column contains Decimal objects
+            if df[col].apply(lambda x: isinstance(x, Decimal)).any():
+                df[col] = df[col].apply(lambda x: float(x) if isinstance(x, Decimal) else x)
+            # Try numeric conversion with coerce (not deprecated 'ignore')
             try:
-                df[col] = pd.to_numeric(df[col], errors='ignore')
+                numeric_col = pd.to_numeric(df[col], errors='coerce')
+                # Only use if not all NaN
+                if not numeric_col.isna().all():
+                    df[col] = numeric_col
             except:
                 pass
     return df
@@ -141,13 +261,18 @@ platform_str = "','".join(platform_filter)
 
 # Version Filter
 st.sidebar.subheader("📦 App Version")
-try:
-    versions_df = run_query(f"""
+
+@st.cache_data(ttl=3600)
+def get_versions():
+    return run_query(f"""
         SELECT DISTINCT CLIENT_VERSION
         FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
         WHERE GAME_ID = {GAME_ID}
         ORDER BY CLIENT_VERSION DESC
     """)
+
+try:
+    versions_df = get_versions()
     versions_list = versions_df['CLIENT_VERSION'].tolist()
     version_filter = st.sidebar.multiselect("Select versions", versions_list, default=versions_list)
     version_str = "','".join(version_filter)
@@ -547,7 +672,8 @@ with tab3:
             GROUP BY EVENT_JSON:MiniGameName::STRING ORDER BY PLAYS DESC
         """)
         if not mg_df.empty:
-            mg_display = mg_df.rename(columns={
+            mg_df['Description'] = mg_df['MINI_GAME'].apply(get_minigame_description)
+            mg_display = mg_df[['MINI_GAME', 'Description', 'PLAYS', 'AVG_DURATION_SEC', 'COMPLETION_RATE']].rename(columns={
                 'MINI_GAME': 'Mini-Game',
                 'PLAYS': 'Plays',
                 'AVG_DURATION_SEC': 'Avg Duration (sec)',
@@ -586,7 +712,8 @@ with tab3:
             GROUP BY EVENT_JSON:lobbyActionName::STRING ORDER BY COUNT DESC
         """)
         if not lobby_df.empty:
-            lobby_display = lobby_df.rename(columns={
+            lobby_df['Description'] = lobby_df['ACTION'].apply(get_lobby_action_description)
+            lobby_display = lobby_df[['ACTION', 'Description', 'COUNT', 'COMPLETION_RATE']].rename(columns={
                 'ACTION': 'Action',
                 'COUNT': 'Count',
                 'COMPLETION_RATE': 'Completion %'
@@ -703,10 +830,11 @@ with tab5:
         """)
         if not e_df.empty:
             e_df['Action'] = e_df['EVENT_NAME'].apply(get_friendly_name)
+            e_df['Description'] = e_df['EVENT_NAME'].apply(get_action_description)
             e_df['Total'] = e_df['COUNT']
 
             st.dataframe(
-                e_df[['Action', 'EVENT_NAME', 'Total']].rename(columns={'EVENT_NAME': 'Event Code'}),
+                e_df[['Action', 'Description', 'EVENT_NAME', 'Total']].rename(columns={'EVENT_NAME': 'Event Code'}),
                 use_container_width=True,
                 hide_index=True
             )
