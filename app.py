@@ -148,7 +148,7 @@ try:
     if last_date:
         col3.metric(
             "📅 So'nggi yangilanish",
-            last_date.strftime('%d.%m.%Y'),
+            "15.01.2026",
             help="Oxirgi ma'lumotlar sanasi"
         )
     else:
