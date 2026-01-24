@@ -5,209 +5,64 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import snowflake.connector
 
-# Настройки страницы 12345
+# Page setup
 st.set_page_config(
-    page_title="Bek va Lola Analytics",
-    page_icon="🎮",
-    layout="wide"
+    page_title="Bek va Lola • Analytics",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# Color palette
-COLORS = ['#ccd5ae', '#e9edc9', '#fefae0', '#faedcd', '#d4a373']
+# Theme colors
+COLORS = {
+    "bg": "#070A12",
+    "border": "#2A3354",
+    "text": "#F3F7FF",
+    "muted": "#B6C2DD",
+    "accent": "#2EF2C2",
+    "new_users": "#B56BFF",
+    "sessions": "#4AA8FF",
+    "minigame": "#FF5A7A",
+    "android": "#35E27B",
+    "ios": "#4AA8FF",
+    "other": "#A9B3C9",
+    "purple": "#B56BFF",
+}
 
-# Check secrets exist
+alt.data_transformers.disable_max_rows()
+
+# Secrets check
 if "snowflake" not in st.secrets:
-    st.error("Snowflake credentials not found. Please configure secrets.")
+    st.error("Snowflake credentials topilmadi. Iltimos, secrets ni sozlang.")
     st.stop()
 
-# Dictionary for friendly action names with descriptions
-# Format: 'event_name': ('Display Name', 'Description')
-ACTION_NAMES = {
-    # Sessions
-    'sessionStart': ('🚀 Game Start', 'Player started a new game session'),
-    'sessionEnd': ('🔚 Game End', 'Player ended the game session'),
-    'appStart': ('📱 App Launch', 'Application was launched'),
-    'appQuit': ('📴 App Close', 'Application was closed'),
-    'sdkStart': ('⚡ SDK Start', 'Unity Analytics SDK initialized'),
-    'gameStarted': ('🎮 Game Started', 'Game started after loading'),
-    'gameEnded': ('🏁 Game Ended', 'Game session ended'),
-    'gameRunning': ('▶️ Game Running', 'Game is active and running'),
-
-    # Mini-games
-    'playedMiniGameStatus': ('🎮 Mini-game Played', 'Player played a mini-game'),
-    'startMiniGame': ('🎯 Mini-game Start', 'Player started a mini-game'),
-    'miniGameStarted': ('▶️ Mini-game Started', 'Mini-game was launched'),
-    'miniGameCompleted': ('✅ Mini-game Completed', 'Mini-game completed successfully'),
-    'miniGameFailed': ('❌ Mini-game Failed', 'Mini-game was failed'),
-
-    # Lobby & Navigation
-    'startLobbyAction': ('🏠 Lobby Action Start', 'Player started an action in lobby'),
-    'lobbyActionInExit': ('🚪 Lobby Action Exit', 'Player finished lobby action'),
-    'lobbyEnter': ('🚪 Lobby Enter', 'Player entered the lobby'),
-    'lobbyExit': ('🚶 Lobby Exit', 'Player exited the lobby'),
-    'sceneLoaded': ('🎬 Scene Loaded', 'Game scene was loaded'),
-
-    # Progress & Achievements
-    'levelUp': ('⬆️ Level Up', 'Player reached a new level'),
-    'achievementUnlocked': ('🏆 Achievement Unlocked', 'Player unlocked an achievement'),
-    'rewardClaimed': ('🎁 Reward Claimed', 'Player claimed a reward'),
-    'questCompleted': ('📋 Quest Completed', 'Player completed a quest'),
-
-    # Purchases & Monetization
-    'purchase': ('💰 Purchase', 'Player made a purchase'),
-    'transaction': ('💳 Transaction', 'Successful transaction'),
-    'transactionFailed': ('❌ Transaction Failed', 'Transaction failed'),
-    'iapPurchase': ('💳 In-App Purchase', 'In-app purchase made'),
-    'adWatched': ('📺 Ad Watched', 'Player watched an ad'),
-    'adSkipped': ('⏭️ Ad Skipped', 'Player skipped an ad'),
-    'testPremiumBought': ('👑 Premium Bought', 'Test premium purchase'),
-
-    # Social
-    'shareClicked': ('📤 Share Clicked', 'Player clicked the share button'),
-    'inviteSent': ('✉️ Invite Sent', 'Player sent an invite'),
-
-    # Settings
-    'settingsChanged': ('⚙️ Settings Changed', 'Player changed settings'),
-    'languageChanged': ('🌐 Language Changed', 'Player changed language'),
-    'soundToggled': ('🔊 Sound Toggled', 'Player toggled sound on/off'),
-
-    # Tutorial
-    'tutorialStarted': ('📖 Tutorial Started', 'Player started the tutorial'),
-    'tutorialCompleted': ('🎓 Tutorial Completed', 'Player completed the tutorial'),
-    'tutorialSkipped': ('⏩ Tutorial Skipped', 'Player skipped the tutorial'),
-
-    # Notifications
-    'NotificationPermissionGranted': ('🔔 Notification Permission', "Push Notificationni tasdiqlagan foydalanuvchilar soni"),
-    'NotificationPermissionDenied': ('🔕 Notification Denied', "Push notificationga ruxsat bermagan foydalanuvchilar"),
-    'notificationOpened': ('📬 Notification Opened', 'Player opened a notification'),
-    'notificationServices': ('🔔 Notification Services', 'Notification services active'),
-
-    # Player & Device
-    'newPlayer': ('🆕 New Player', 'New player registered'),
-    'clientDevice': ('📱 Client Device', 'Player device information'),
-
-    # Other
-    'testCustomEvent': ('🧪 Test Event', 'Test event'),
-    'outOfGameSend': ('📤 Out of Game Send', 'Data sent outside of game'),
+# Mini-game names (display)
+MINIGAME_NAMES = {
+    "AstroBek": "Astrobek",
+    "Badantarbiya": "Badantarbiya",
+    "HiddeAndSikLolaRoom": "Berkinmachoq",
+    "Market": "Bozor",
+    "Shapes": "Shakllar",
+    "NumbersShape": "Raqamlar",
+    "Words": "So'zlar",
+    "MapMatchGame": "Xarita",
+    "FindHiddenLetters": "Yashirin harflar",
+    "RocketGame": "Raketa",
+    "TacingLetter": "Harflar yozish",
+    "Baroqvoy": "Baroqvoy",
+    "Ballons": "Sharlar",
+    "HygieneTeath": "Tish tozalash",
+    "HygieneHand": "Qo'l yuvish",
+    "BasketBall": "Basketbol",
+    "FootBall": "Futbol",
 }
 
-# Dictionary for mini-game descriptions (from Unity Analytics Data Explorer)
-MINIGAME_DESCRIPTIONS = {
-    'AstroBek': "Astrobek o'yini",
-    'Badantarbiya': "Badantarbiya mashqlari",
-    'HiddeAndSikLolaRoom': "Berkinmachoq Lola xonasi",
-    'Market': "Market - bozor o'yini",
-    'Shapes': "Mini Game Sort - shakllarni saralash",
-    'NumbersShape': "Raqamlar shakli",
-    'Words': "So'zlar o'yini",
-    'MapMatchGame': "Xarita o'yini",
-    'FindHiddenLetters': "Yashiringan harflarni topish - So'zdagi yashiringan harfni topish",
-    'RocketGame': "Raketa o'yini",
-    'TacingLetter': "Harflarni yozishni o'rganish",
-    'Baroqvoy': "Baroqvoy - an'anaviy o'yin",
-    'Ballons': "Sharlarni yorish",
-    'HygieneTeath': "Tishlarni tozalash",
-    'HygieneHand': "Qo'llarni yuvish",
-    'BasketBall': "Basketbol o'yini",
-    'FootBall': "Futbol o'yini",
-}
+def get_minigame_name(name):
+    if name is None:
+        return "Noma'lum"
+    return MINIGAME_NAMES.get(name, name)
 
-# Dictionary for lobby action descriptions (actual actions from database)
-LOBBY_ACTION_DESCRIPTIONS = {
-    'Sing': 'Character singing activity',
-    'Trampoline': 'Jumping on trampoline',
-    'Treadmill': 'Running on treadmill exercise',
-    'Flute': 'Playing the flute instrument',
-    'Pool': 'Swimming pool activity',
-    'Doira': 'Playing traditional Uzbek drum',
-    'Toilet_1': 'Using toilet (location 1)',
-    'Toilet_2': 'Using toilet (location 2)',
-    'Dutor': 'Playing traditional Uzbek dutor',
-    'Sink_1': 'Washing at sink (location 1)',
-    'Sink_2': 'Washing at sink (location 2)',
-    'Eat_0': 'Eating meal (option 1)',
-    'Eat_1': 'Eating meal (option 2)',
-    'Eat_2': 'Eating meal (option 3)',
-    'Eat_3': 'Eating meal (option 4)',
-    'Football': 'Playing football in lobby',
-    'Gitara': 'Playing guitar instrument',
-    'Sleep_0': 'Sleeping (bed 1)',
-    'Sleep_1': 'Sleeping (bed 2)',
-    'Sleep_2': 'Sleeping (bed 3)',
-    'Sleep_3': 'Sleeping (bed 4)',
-    'Basketball': 'Playing basketball in lobby',
-    'Telescope': 'Looking through telescope',
-    'Game': 'Starting a game',
-}
-
-def get_minigame_description(minigame_name):
-    """Returns mini-game description"""
-    if minigame_name is None:
-        return 'Unknown mini-game'
-    # Try exact match first
-    if minigame_name in MINIGAME_DESCRIPTIONS:
-        return MINIGAME_DESCRIPTIONS[minigame_name]
-    # Try partial match
-    for key, desc in MINIGAME_DESCRIPTIONS.items():
-        if key.lower() in str(minigame_name).lower():
-            return desc
-    return 'Educational mini-game for children'
-
-def get_lobby_action_description(action_name):
-    """Returns lobby action description"""
-    if action_name is None:
-        return 'Unknown action'
-    # Try exact match first
-    if action_name in LOBBY_ACTION_DESCRIPTIONS:
-        return LOBBY_ACTION_DESCRIPTIONS[action_name]
-    # Try partial match
-    for key, desc in LOBBY_ACTION_DESCRIPTIONS.items():
-        if key.lower() in str(action_name).lower():
-            return desc
-    return 'Lobby menu action'
-
-def get_friendly_name(event_name):
-    """Returns friendly action name"""
-    action = ACTION_NAMES.get(event_name)
-    if action:
-        return action[0]  # Return display name
-    return f'🎯 {event_name}'
-
-def get_action_description(event_name):
-    """Returns action description"""
-    action = ACTION_NAMES.get(event_name)
-    if action:
-        return action[1]  # Return description
-    return 'Custom event'
-
-def create_bar_chart(df, x_col, y_col, x_title=None, y_title=None, horizontal=False):
-    """Creates a bar chart with tooltip on hover"""
-    if horizontal:
-        chart = alt.Chart(df).mark_bar(color=COLORS[4]).encode(
-            x=alt.X(f'{y_col}:Q', title=y_title or y_col),
-            y=alt.Y(f'{x_col}:N', title=x_title or x_col, sort='-x'),
-            tooltip=[alt.Tooltip(f'{y_col}:Q', format=',', title='')]
-        )
-    else:
-        chart = alt.Chart(df).mark_bar(color=COLORS[4]).encode(
-            x=alt.X(f'{x_col}:N', title=x_title or x_col, sort=None),
-            y=alt.Y(f'{y_col}:Q', title=y_title or y_col),
-            tooltip=[alt.Tooltip(f'{y_col}:Q', format=',', title='')]
-        )
-    return chart.properties(height=400)
-
-def create_time_bar_chart(df, x_col, y_col, x_title=None, y_title=None):
-    """Creates a bar chart for time series data with tooltip on hover"""
-    chart = alt.Chart(df).mark_bar(color=COLORS[4], size=20).encode(
-        x=alt.X(f'{x_col}:T',
-                title=x_title or x_col,
-                axis=alt.Axis(format='%Y-%m-%d', labelAngle=-45)),
-        y=alt.Y(f'{y_col}:Q', title=y_title or y_col),
-        tooltip=[alt.Tooltip(f'{y_col}:Q', format=',', title='')]
-    )
-    return chart.properties(height=400)
-
-# Подключение к Snowflake
+# Snowflake connection (cached)
 @st.cache_resource
 def get_connection():
     return snowflake.connector.connect(
@@ -216,10 +71,10 @@ def get_connection():
         account=st.secrets["snowflake"]["account"],
         warehouse=st.secrets["snowflake"]["warehouse"],
         database=st.secrets["snowflake"]["database"],
-        schema=st.secrets["snowflake"]["schema"]
+        schema=st.secrets["snowflake"]["schema"],
     )
 
-def run_query(query):
+def run_query(query: str) -> pd.DataFrame:
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(query)
@@ -227,810 +82,868 @@ def run_query(query):
     data = cur.fetchall()
     df = pd.DataFrame(data, columns=columns)
 
-    # Convert Decimal objects to float for chart compatibility
+    # Decimal -> float + numeric coercion
     for col in df.columns:
         if df[col].dtype == object:
-            # Check if column contains Decimal objects
             if df[col].apply(lambda x: isinstance(x, Decimal)).any():
                 df[col] = df[col].apply(lambda x: float(x) if isinstance(x, Decimal) else x)
-            # Try numeric conversion with coerce (not deprecated 'ignore')
             try:
-                numeric_col = pd.to_numeric(df[col], errors='coerce')
-                # Only use if not all NaN
+                numeric_col = pd.to_numeric(df[col], errors="coerce")
                 if not numeric_col.isna().all():
                     df[col] = numeric_col
-            except:
+            except Exception:
                 pass
     return df
 
-# Header
-st.title("🎮 Bek va Lola Analytics")
-st.caption("Game analytics powered by Unity Analytics")
-
-# GAME_ID для Bek va Lola
 GAME_ID = 181330318
 DB = "UNITY_ANALYTICS_GCP_US_CENTRAL1_UNITY_ANALYTICS_PDA.SHARES"
 
-# ============ SIDEBAR FILTERS ============
-st.sidebar.header("🔧 Filters")
-
-# Date Range
-st.sidebar.subheader("📅 Date Range")
-date_option = st.sidebar.selectbox(
-    "Select period",
-    ["All time", "Last 7 days", "Last 14 days", "Last 30 days", "Last 90 days", "Custom"],
-    index=0
-)
-
-if date_option == "Custom":
-    start_date = st.sidebar.date_input("Start date", datetime.now() - timedelta(days=30))
-    end_date = st.sidebar.date_input("End date", datetime.now())
-elif date_option == "All time":
-    end_date = datetime.now()
-    start_date = datetime(2020, 1, 1)  # Far back date to include all data
-else:
-    days_map = {
-        "Last 7 days": 7,
-        "Last 14 days": 14,
-        "Last 30 days": 30,
-        "Last 90 days": 90
+# Altair transparent theme for dark UI
+def _transparent_theme():
+    return {
+        "config": {
+            "background": "transparent",
+            "view": {"stroke": "transparent"},
+            "axis": {
+                "labelColor": COLORS["muted"],
+                "titleColor": COLORS["muted"],
+                "gridColor": "rgba(255, 255, 255, 0.08)",
+                "domainColor": "rgba(255, 255, 255, 0.14)",
+                "tickColor": "rgba(255, 255, 255, 0.14)",
+                "labelFontSize": 11,
+                "titleFontSize": 11,
+            },
+            "legend": {"labelColor": COLORS["muted"], "titleColor": COLORS["muted"]},
+            "title": {"color": COLORS["text"]},
+        }
     }
-    days = days_map[date_option]
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days)
 
-start_str = start_date.strftime('%Y-%m-%d')
-end_str = end_date.strftime('%Y-%m-%d')
+alt.themes.register("transparent_pro", _transparent_theme)
+alt.themes.enable("transparent_pro")
 
-st.sidebar.info(f"📆 {start_str} → {end_str}")
+# UI styles
+st.markdown(
+    f"""
+<style>
+  .stApp {{
+    background:
+      radial-gradient(1200px 700px at 15% 0%, rgba(46,242,194,0.22), transparent 60%),
+      radial-gradient(1000px 650px at 85% 10%, rgba(181,107,255,0.18), transparent 58%),
+      {COLORS["bg"]};
+    color: {COLORS["text"]};
+  }}
+  .block-container {{
+    max-width: 1320px;
+    padding-top: 1.0rem;
+    padding-bottom: 2.0rem;
+    padding-left: 1.6rem;
+    padding-right: 1.6rem;
+  }}
 
-# Platform Filter
-st.sidebar.subheader("📱 Platform")
-platform_filter = st.sidebar.multiselect(
-    "Select platforms",
-    ["ANDROID", "IOS"],
-    default=["ANDROID", "IOS"]
+  #MainMenu {{ visibility: hidden; }}
+  footer {{ visibility: hidden; }}
+
+  [data-testid="stHeader"] {{
+    background: transparent !important;
+    border-bottom: 0 !important;
+    box-shadow: none !important;
+  }}
+
+  .muted {{ color: {COLORS["muted"]}; }}
+
+  [data-testid="stSidebarCollapsedControl"] {{
+    top: 14px !important;
+    left: 14px !important;
+    z-index: 9999 !important;
+    background: rgba(18, 35, 58, 0.92) !important;
+    border: 1px solid rgba(255,255,255,0.14) !important;
+    border-radius: 14px !important;
+    padding: 6px 8px !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.25) !important;
+  }}
+  [data-testid="stSidebarCollapseButton"] {{
+    background: rgba(18, 35, 58, 0.92) !important;
+    border: 1px solid rgba(255,255,255,0.14) !important;
+    border-radius: 12px !important;
+    padding: 4px 6px !important;
+  }}
+
+  [data-testid="stVegaLiteChart"] {{
+    background: transparent !important;
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 16px;
+    padding: 10px;
+  }}
+  [data-testid="stVegaLiteChart"] > div {{ background: transparent !important; }}
+
+  .hero {{
+    background: linear-gradient(180deg, rgba(18,35,58,0.78), rgba(10,16,28,0.55));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 18px;
+    padding: 14px 16px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.22);
+    margin-bottom: 12px;
+  }}
+  .hero-title {{
+    font-size: 1.65rem;
+    font-weight: 950;
+    letter-spacing: -0.02em;
+  }}
+
+  .kpi-grid {{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+  }}
+  .kpi {{
+    background: linear-gradient(180deg, rgba(18,35,58,0.60), rgba(10,16,28,0.36));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 14px 14px;
+    box-shadow: 0 10px 22px rgba(0,0,0,0.14);
+    backdrop-filter: blur(6px);
+  }}
+  .kpi-label {{
+    font-size: 0.92rem;
+    color: {COLORS["muted"]};
+    font-weight: 850;
+    margin-bottom: 8px;
+  }}
+  .kpi-value {{
+    font-size: 2.05rem;
+    font-weight: 950;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    color: {COLORS["text"]};
+  }}
+
+  .panel {{
+    background: linear-gradient(180deg, rgba(18,35,58,0.46), rgba(10,16,28,0.28));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 18px;
+    padding: 8px 12px 12px 12px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.12);
+    margin-bottom: 12px;
+  }}
+  .panel-title {{
+    font-size: 1.05rem;
+    font-weight: 950;
+    letter-spacing: -0.01em;
+    margin: 2px 0 2px 0;
+  }}
+  .panel-sub {{
+    color: {COLORS["muted"]};
+    font-weight: 750;
+    font-size: 0.92rem;
+    margin: 0 0 6px 0;
+  }}
+
+  [data-testid="stSidebar"] {{
+    background: linear-gradient(180deg, rgba(18,35,58,0.96), rgba(10,16,28,0.90)) !important;
+    border-right: 1px solid rgba(255,255,255,0.12) !important;
+  }}
+  [data-testid="stSidebar"] * {{ color: {COLORS["text"]} !important; }}
+  [data-testid="stSidebar"] .stDateInput label,
+  [data-testid="stSidebar"] .stSelectbox label {{
+    color: {COLORS["muted"]} !important;
+    font-weight: 850 !important;
+  }}
+
+  /* Legend container matches chart card look */
+  .legend-card {{
+    background: rgba(18, 35, 58, 0.55) !important;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 16px;
+    padding: 10px;
+    box-shadow: 0 10px 22px rgba(0,0,0,0.14);
+  }}
+
+  /* Extra top padding prevents the top pill-looking row from feeling glued */
+  .stat-card {{
+    background: linear-gradient(180deg, rgba(18,35,58,0.36), rgba(10,16,28,0.22));
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 16px;
+    padding: 18px 12px 12px 12px;
+    backdrop-filter: blur(6px);
+  }}
+  .stat-row {{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }}
+  .stat-row:last-child {{ border-bottom: none; padding-bottom: 2px; }}
+  .dot {{
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    margin-right: 10px;
+    margin-top: 5px;
+    flex: 0 0 auto;
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.04);
+  }}
+  .stat-left {{
+    display:flex;
+    align-items:flex-start;
+    gap: 10px;
+    font-weight: 900;
+    line-height: 1.15;
+  }}
+  .stat-label {{
+    font-weight: 950;
+    letter-spacing: -0.01em;
+  }}
+  .stat-sub {{
+    color: {COLORS["muted"]};
+    font-weight: 750;
+    font-size: 0.9rem;
+    margin-top: 3px;
+  }}
+  .stat-right {{
+    font-weight: 950;
+    color: {COLORS["text"]};
+    text-align:right;
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+  }}
+
+  .rank-card {{
+    background: linear-gradient(180deg, rgba(18,35,58,0.36), rgba(10,16,28,0.22));
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 16px;
+    padding: 10px 12px;
+    backdrop-filter: blur(6px);
+  }}
+  .rank-row {{
+    display:grid;
+    grid-template-columns: 52px 1fr 120px;
+    gap: 10px;
+    align-items:center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }}
+  .rank-row:last-child {{ border-bottom: none; }}
+  .rank-badge {{ font-size: 1.2rem; font-weight: 900; }}
+  .rank-name {{ font-weight: 900; }}
+  .rank-val {{ text-align:right; font-weight: 950; }}
+
+  @media (max-width: 980px) {{
+    .kpi-grid {{ grid-template-columns: 1fr; }}
+    .rank-row {{ grid-template-columns: 52px 1fr 100px; }}
+  }}
+</style>
+""",
+    unsafe_allow_html=True,
 )
-platform_str = "','".join(platform_filter)
 
-# Version Filter
-st.sidebar.subheader("📦 App Version")
+# Filters (sidebar)
+with st.sidebar:
+    st.markdown("## ⚙️ Filtrlar")
+    st.markdown('<div class="muted">Davr va ko‘rinishlarni tanlang.</div>', unsafe_allow_html=True)
+    st.divider()
 
-@st.cache_data(ttl=3600)
-def get_versions():
-    return run_query(f"""
-        SELECT DISTINCT CLIENT_VERSION
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        ORDER BY CLIENT_VERSION DESC
-    """)
+    period_type = st.selectbox(
+        "👥 Yangi foydalanuvchilar (kesim)",
+        ["Kunlik", "Haftalik", "Oylik"],
+        key="new_users_period",
+    )
+    date_range = st.date_input(
+        "👥 Yangi foydalanuvchilar (sana oralig‘i)",
+        value=(datetime.now() - timedelta(days=30), datetime.now()),
+        key="new_users_date",
+    )
 
-try:
-    versions_df = get_versions()
-    versions_list = versions_df['CLIENT_VERSION'].tolist()
-    version_filter = st.sidebar.multiselect("Select versions", versions_list, default=versions_list)
-    version_str = "','".join(version_filter)
-except:
-    version_filter = []
-    version_str = ""
+    st.divider()
 
-# Base WHERE clause
-WHERE = f"""
-WHERE GAME_ID = {GAME_ID}
-AND EVENT_DATE BETWEEN '{start_str}' AND '{end_str}'
-AND PLATFORM IN ('{platform_str}')
-AND CLIENT_VERSION IN ('{version_str}')
-"""
+    session_view = st.selectbox("📈 Sessiyalar (ko‘rinish)", ["Kunlik", "Soatlik"], key="session_view")
+    if session_view == "Soatlik":
+        session_date = st.date_input("📈 Soatlik (sana)", value=datetime.now(), key="session_date")
+        session_period = None
+    else:
+        session_period = st.selectbox(
+            "📈 Kunlik (davr)",
+            ["So'nggi 7 kun", "So'nggi 14 kun", "So'nggi 30 kun"],
+            key="session_period",
+        )
+        session_date = None
 
-WHERE_EVENTS = f"""
-WHERE GAME_ID = {GAME_ID}
-AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-"""
+    st.divider()
 
-# ============ TABS ============
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📈 Overview",
-    "🔄 Retention",
-    "🎮 Mini-Games",
-    "📊 Segments",
-    "🎯 Player Actions"
-])
-
-# ============ TAB 1: OVERVIEW ============
-with tab1:
-    st.subheader("📈 Key Metrics")
-    st.caption("Main player activity indicators for the selected period")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    # All Users
-    try:
-        all_users = run_query(f"""
-            SELECT COUNT(DISTINCT USER_ID) as TOTAL
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-        """)
-        col1.metric("👥 Total Players", f"{all_users['TOTAL'][0]:,}", help="Unique players in period")
-    except:
-        col1.metric("👥 Total Players", "N/A")
-
-    # DAU (average)
-    try:
-        dau_avg = run_query(f"""
-            SELECT ROUND(AVG(daily_users), 0) as AVG_DAU
-            FROM (
-                SELECT EVENT_DATE, COUNT(DISTINCT USER_ID) as daily_users
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                GROUP BY EVENT_DATE
-            )
-        """)
-        col2.metric("📊 Avg DAU", f"{int(dau_avg['AVG_DAU'][0]):,}", help="Average daily active users")
-    except:
-        col2.metric("📊 Avg DAU", "N/A")
-
-    # WAU
-    try:
-        wau = run_query(f"""
-            SELECT COUNT(DISTINCT USER_ID) as WAU
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            AND EVENT_DATE >= DATEADD(day, -7, '{end_str}')
-        """)
-        col3.metric("📅 WAU", f"{wau['WAU'][0]:,}", help="Weekly active users")
-    except:
-        col3.metric("📅 WAU", "N/A")
-
-    # MAU
-    try:
-        mau = run_query(f"""
-            SELECT COUNT(DISTINCT USER_ID) as MAU
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-        """)
-        col4.metric("📆 MAU", f"{mau['MAU'][0]:,}", help="Monthly active users")
-    except:
-        col4.metric("📆 MAU", "N/A")
-
-    # Second row metrics
-    col5, col6, col7, col8 = st.columns(4)
-
-    # New Users
-    try:
-        new_users = run_query(f"""
-            SELECT COUNT(DISTINCT USER_ID) as NEW_USERS
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
-        """)
-        col5.metric("🆕 New Players", f"{new_users['NEW_USERS'][0]:,}", help="Players who started in this period")
-    except:
-        col5.metric("🆕 New Players", "N/A")
-
-    # Sessions per DAU
-    try:
-        spd = run_query(f"""
-            SELECT ROUND(COUNT(DISTINCT SESSION_ID) * 1.0 / NULLIF(COUNT(DISTINCT USER_ID), 0), 2) as SPD
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-        """)
-        col6.metric("🔄 Sessions/Player", f"{spd['SPD'][0]}", help="Average sessions per player")
-    except:
-        col6.metric("🔄 Sessions/Player", "N/A")
-
-    # Avg Session Length
-    try:
-        session_len = run_query(f"""
-            SELECT ROUND(AVG(TOTAL_TIME_MS) / 60000, 2) as AVG_MIN
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            AND TOTAL_TIME_MS > 0
-        """)
-        col7.metric("⏱️ Avg Session", f"{session_len['AVG_MIN'][0]} min", help="Average session duration")
-    except:
-        col7.metric("⏱️ Avg Session", "N/A")
-
-    # Total Sessions
-    try:
-        total_sessions = run_query(f"""
-            SELECT COUNT(DISTINCT SESSION_ID) as SESSIONS
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-        """)
-        col8.metric("🎮 Total Sessions", f"{total_sessions['SESSIONS'][0]:,}", help="Total game sessions")
-    except:
-        col8.metric("🎮 Total Sessions", "N/A")
-
-    # Third row
-    col9, col10, col11, col12 = st.columns(4)
-
-    # Actions per User
-    try:
-        epu = run_query(f"""
-            SELECT ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT USER_ID), 0), 1) as EPU
-            FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-        """)
-        col9.metric("🎯 Actions/Player", f"{epu['EPU'][0]}", help="Average actions per player")
-    except:
-        col9.metric("🎯 Actions/Player", "N/A")
-
-    # Total Actions
-    try:
-        total_events = run_query(f"""
-            SELECT COUNT(*) as EVENTS
-            FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-        """)
-        col10.metric("📊 Total Actions", f"{total_events['EVENTS'][0]:,}", help="Total in-game actions")
-    except:
-        col10.metric("📊 Total Actions", "N/A")
-
-    # Stickiness
-    try:
-        if mau['MAU'][0] > 0 and dau_avg['AVG_DAU'][0]:
-            stickiness = round(dau_avg['AVG_DAU'][0] / mau['MAU'][0] * 100, 1)
-            col11.metric("📌 Stickiness", f"{stickiness}%", help="DAU/MAU - how often players return")
-        else:
-            col11.metric("📌 Stickiness", "N/A")
-    except:
-        col11.metric("📌 Stickiness", "N/A")
-
-    # Actions per Session
-    try:
-        eps = run_query(f"""
-            SELECT ROUND(AVG(NUMBER_OF_EVENTS), 1) as EPS
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-        """)
-        col12.metric("🔢 Actions/Session", f"{eps['EPS'][0]}", help="Average actions per session")
-    except:
-        col12.metric("🔢 Actions/Session", "N/A")
-
-    st.markdown("---")
-
-    # DAU Chart
-    st.subheader("📊 Daily Active Users (DAU)")
-    st.caption("Unique players who played each day")
-    try:
-        dau_df = run_query(f"""
-            SELECT EVENT_DATE, COUNT(DISTINCT USER_ID) as USERS
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            GROUP BY EVENT_DATE ORDER BY EVENT_DATE
-        """)
-        if not dau_df.empty:
-            chart = create_time_bar_chart(dau_df, 'EVENT_DATE', 'USERS', 'Date', 'Users')
-            st.altair_chart(chart, use_container_width=True)
-    except:
-        st.info("No data available")
-
-    # New Users Chart
-    st.subheader("👥 Daily New Players")
-    st.caption("Players who launched the game for the first time")
-    try:
-        new_df = run_query(f"""
-            SELECT PLAYER_START_DATE as DATE, COUNT(DISTINCT USER_ID) as NEW_USERS
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
-            GROUP BY PLAYER_START_DATE ORDER BY PLAYER_START_DATE
-        """)
-        if not new_df.empty:
-            chart = create_time_bar_chart(new_df, 'DATE', 'NEW_USERS', 'Date', 'New Users')
-            st.altair_chart(chart, use_container_width=True)
-    except:
-        st.info("No data available")
-
-    # Session Length
-    st.subheader("⏱️ Average Session Length (minutes)")
-    st.caption("How long players spend in the game per session")
-    try:
-        sess_df = run_query(f"""
-            SELECT EVENT_DATE, ROUND(AVG(TOTAL_TIME_MS) / 60000, 2) as AVG_MIN
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            AND TOTAL_TIME_MS > 0
-            GROUP BY EVENT_DATE ORDER BY EVENT_DATE
-        """)
-        if not sess_df.empty:
-            chart = create_time_bar_chart(sess_df, 'EVENT_DATE', 'AVG_MIN', 'Date', 'Minutes')
-            st.altair_chart(chart, use_container_width=True)
-    except:
-        st.info("No data available")
-
-# ============ TAB 2: RETENTION ============
-with tab2:
-    st.subheader("🔄 Player Retention Analysis")
-    st.caption("What percentage of players return to the game N days after first launch")
-
-    col_ret1, col_ret2, col_ret3, col_ret4 = st.columns(4)
-
-    # Day 1
-    try:
-        d1 = run_query(f"""
-            WITH first_day AS (
-                SELECT USER_ID, MIN(EVENT_DATE) as first_date
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY WHERE GAME_ID = {GAME_ID} GROUP BY USER_ID
-            ),
-            returned AS (
-                SELECT f.USER_ID FROM first_day f
-                JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s ON f.USER_ID = s.USER_ID
-                AND s.EVENT_DATE = DATEADD(day, 1, f.first_date) AND s.GAME_ID = {GAME_ID}
-                WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -1, '{end_str}')
-            )
-            SELECT ROUND(COUNT(DISTINCT r.USER_ID) * 100.0 / NULLIF(COUNT(DISTINCT f.USER_ID), 0), 1) as RET
-            FROM first_day f LEFT JOIN returned r ON f.USER_ID = r.USER_ID
-            WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -1, '{end_str}')
-        """)
-        ret_val = float(d1['RET'][0]) if d1['RET'][0] is not None else 0
-        col_ret1.metric("📅 Day 1", f"{ret_val}%", help="Returned next day")
-    except:
-        col_ret1.metric("📅 Day 1", "N/A")
-
-    # Day 7
-    try:
-        d7 = run_query(f"""
-            WITH first_day AS (
-                SELECT USER_ID, MIN(EVENT_DATE) as first_date
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY WHERE GAME_ID = {GAME_ID} GROUP BY USER_ID
-            ),
-            returned AS (
-                SELECT f.USER_ID FROM first_day f
-                JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s ON f.USER_ID = s.USER_ID
-                AND s.EVENT_DATE = DATEADD(day, 7, f.first_date) AND s.GAME_ID = {GAME_ID}
-                WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -7, '{end_str}')
-            )
-            SELECT ROUND(COUNT(DISTINCT r.USER_ID) * 100.0 / NULLIF(COUNT(DISTINCT f.USER_ID), 0), 1) as RET
-            FROM first_day f LEFT JOIN returned r ON f.USER_ID = r.USER_ID
-            WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -7, '{end_str}')
-        """)
-        ret_val = float(d7['RET'][0]) if d7['RET'][0] is not None else 0
-        col_ret2.metric("📅 Day 7", f"{ret_val}%", help="Returned after a week")
-    except:
-        col_ret2.metric("📅 Day 7", "N/A")
-
-    # Day 14
-    try:
-        d14 = run_query(f"""
-            WITH first_day AS (
-                SELECT USER_ID, MIN(EVENT_DATE) as first_date
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY WHERE GAME_ID = {GAME_ID} GROUP BY USER_ID
-            ),
-            returned AS (
-                SELECT f.USER_ID FROM first_day f
-                JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s ON f.USER_ID = s.USER_ID
-                AND s.EVENT_DATE = DATEADD(day, 14, f.first_date) AND s.GAME_ID = {GAME_ID}
-                WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -14, '{end_str}')
-            )
-            SELECT ROUND(COUNT(DISTINCT r.USER_ID) * 100.0 / NULLIF(COUNT(DISTINCT f.USER_ID), 0), 1) as RET
-            FROM first_day f LEFT JOIN returned r ON f.USER_ID = r.USER_ID
-            WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -14, '{end_str}')
-        """)
-        ret_val = float(d14['RET'][0]) if d14['RET'][0] is not None else 0
-        col_ret3.metric("📅 Day 14", f"{ret_val}%", help="Returned after 2 weeks")
-    except:
-        col_ret3.metric("📅 Day 14", "N/A")
-
-    # Day 30
-    try:
-        d30 = run_query(f"""
-            WITH first_day AS (
-                SELECT USER_ID, MIN(EVENT_DATE) as first_date
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY WHERE GAME_ID = {GAME_ID} GROUP BY USER_ID
-            ),
-            returned AS (
-                SELECT f.USER_ID FROM first_day f
-                JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s ON f.USER_ID = s.USER_ID
-                AND s.EVENT_DATE = DATEADD(day, 30, f.first_date) AND s.GAME_ID = {GAME_ID}
-                WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -30, '{end_str}')
-            )
-            SELECT ROUND(COUNT(DISTINCT r.USER_ID) * 100.0 / NULLIF(COUNT(DISTINCT f.USER_ID), 0), 1) as RET
-            FROM first_day f LEFT JOIN returned r ON f.USER_ID = r.USER_ID
-            WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -30, '{end_str}')
-        """)
-        ret_val = float(d30['RET'][0]) if d30['RET'][0] is not None else 0
-        col_ret4.metric("📅 Day 30", f"{ret_val}%", help="Returned after a month")
-    except:
-        col_ret4.metric("📅 Day 30", "N/A")
-
-    st.markdown("---")
-
-    # Retention Curve
-    st.subheader("📉 Retention Curve")
-    st.caption("Shows how the percentage of active players changes each day after first launch. Day 0 = 100% (all new players)")
+    mg_date_range = st.date_input(
+        "🎮 Mini o‘yinlar (sana oralig‘i)",
+        value=(datetime.now() - timedelta(days=30), datetime.now()),
+        key="mg_date",
+    )
 
     try:
-        retention_df = run_query(f"""
-            WITH first_day AS (
-                SELECT USER_ID, MIN(EVENT_DATE) as first_date
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-                WHERE GAME_ID = {GAME_ID}
-                GROUP BY USER_ID
-            ),
-            cohort_size AS (
-                SELECT COUNT(DISTINCT USER_ID) as total_users
-                FROM first_day
-                WHERE first_date BETWEEN '{start_str}' AND DATEADD(day, -30, '{end_str}')
-            ),
-            user_activity AS (
-                SELECT
-                    f.USER_ID,
-                    DATEDIFF(day, f.first_date, s.EVENT_DATE) as days_since_start
-                FROM first_day f
-                JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s
-                    ON f.USER_ID = s.USER_ID AND s.GAME_ID = {GAME_ID}
-                WHERE f.first_date BETWEEN '{start_str}' AND DATEADD(day, -30, '{end_str}')
-            )
-            SELECT
-                days_since_start as DAY,
-                ROUND(COUNT(DISTINCT USER_ID) * 100.0 / (SELECT total_users FROM cohort_size), 1) as RETENTION
-            FROM user_activity
-            WHERE days_since_start BETWEEN 0 AND 30
-            GROUP BY days_since_start
-            ORDER BY days_since_start
-        """)
-        if not retention_df.empty and len(retention_df) > 1:
-            # Ensure numeric types for chart
-            retention_df['DAY'] = pd.to_numeric(retention_df['DAY'], errors='coerce')
-            retention_df['RETENTION'] = pd.to_numeric(retention_df['RETENTION'], errors='coerce')
-            retention_df = retention_df.dropna()
-            chart = create_bar_chart(retention_df, 'DAY', 'RETENTION', 'Day', 'Retention %')
-            st.altair_chart(chart, use_container_width=True)
-
-            with st.expander("📊 Retention Curve Details"):
-                st.dataframe(
-                    retention_df.rename(columns={'DAY': 'Day', 'RETENTION': 'Retention %'}),
-                    use_container_width=True,
-                    hide_index=True
-                )
-        else:
-            st.info("Not enough data to build retention curve. Try selecting a wider date range.")
-    except Exception as e:
-        st.info("Not enough data to build retention curve")
-
-    st.markdown("---")
-
-    # Retention tips
-    with st.expander("💡 How to Read Retention Metrics"):
-        st.markdown("""
-        **Retention** shows what percentage of players returned to the game N days after their first launch.
-
-        - **Day 1 (D1)**: Good benchmark: 40%+. Critical for casual games.
-        - **Day 7 (D7)**: Good benchmark: 15-20%+. Shows long-term interest.
-        - **Day 30 (D30)**: Good benchmark: 5-10%+. Shows loyalty.
-
-        **Retention Curve** helps you see:
-        - Where main player churn happens
-        - When the curve stabilizes (core audience)
-        - Onboarding effectiveness (first 3 days)
-        """)
-
-# ============ TAB 3: MINI-GAMES ============
-with tab3:
-    st.subheader("🎮 Mini-Games Statistics")
-    st.caption("Analysis of mini-game plays by players")
-
-    try:
-        mg_df = run_query(f"""
-            SELECT
-                EVENT_JSON:MiniGameName::STRING as MINI_GAME,
-                COUNT(*) as PLAYS,
-                ROUND(AVG(EVENT_JSON:duration::FLOAT), 2) as AVG_DURATION_SEC,
-                ROUND(SUM(CASE WHEN EVENT_JSON:isComplated::INT = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as COMPLETION_RATE
+        mg_list = run_query(f"""
+            SELECT DISTINCT EVENT_JSON:MiniGameName::STRING as MINI_GAME
             FROM {DB}.ACCOUNT_EVENTS
             WHERE GAME_ID = {GAME_ID} AND EVENT_NAME = 'playedMiniGameStatus'
-            AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-            GROUP BY EVENT_JSON:MiniGameName::STRING ORDER BY PLAYS DESC
+            AND EVENT_JSON:MiniGameName::STRING IS NOT NULL
         """)
-        if not mg_df.empty:
-            mg_df['Description'] = mg_df['MINI_GAME'].apply(get_minigame_description)
-            mg_display = mg_df[['MINI_GAME', 'Description', 'PLAYS', 'AVG_DURATION_SEC', 'COMPLETION_RATE']].rename(columns={
-                'MINI_GAME': 'Mini-Game',
-                'PLAYS': 'Plays',
-                'AVG_DURATION_SEC': 'Avg Duration (sec)',
-                'COMPLETION_RATE': 'Completion %'
-            })
-            st.dataframe(mg_display, use_container_width=True, hide_index=True)
+        mg_options = ["Barchasi"] + [get_minigame_name(mg) for mg in mg_list["MINI_GAME"].tolist() if mg]
+        mg_original = {get_minigame_name(mg): mg for mg in mg_list["MINI_GAME"].tolist() if mg}
+        selected_mg = st.selectbox("🎮 Mini o‘yin", mg_options, key="mg_filter")
+    except Exception:
+        selected_mg = "Barchasi"
+        mg_original = {}
 
-            col_mg1, col_mg2 = st.columns(2)
-            with col_mg1:
-                st.subheader("🎯 Mini-Game Popularity")
-                st.caption("How many times each mini-game was played")
-                chart = create_bar_chart(mg_df, 'MINI_GAME', 'PLAYS', 'Mini-Game', 'Plays', horizontal=True)
-                st.altair_chart(chart, use_container_width=True)
-            with col_mg2:
-                st.subheader("✅ Completion Rate")
-                st.caption("Percentage of players who completed the mini-game")
-                chart = create_bar_chart(mg_df, 'MINI_GAME', 'COMPLETION_RATE', 'Mini-Game', 'Completion %', horizontal=True)
-                st.altair_chart(chart, use_container_width=True)
-        else:
-            st.info("No mini-game data for selected period")
-    except:
-        st.info("No mini-game data available")
+    st.caption("Tanlangan filtrlar barcha grafiklarni yangilaydi.")
 
-    st.markdown("---")
+# Header
+st.markdown(
+    """
+<div class="hero">
+  <div class="hero-title">📊 Bek va Lola — Analitikasi</div>
+  <div class="muted" style="margin-top:4px;">Bitta sahifa • aniq vizuallar • tez filtrlash</div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
-    # Lobby Actions
-    st.subheader("🏠 Lobby Actions")
-    st.caption("What players do in the main menu")
+# KPI 1: total users
+try:
+    total_users = run_query(f"""
+        SELECT COUNT(DISTINCT USER_ID) as TOTAL
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+    """)
+    kpi_total_users = int(total_users["TOTAL"][0])
+except Exception:
+    kpi_total_users = None
+
+# KPI 2: new users in selected range
+kpi_new_users = None
+if len(date_range) == 2:
+    start_date, end_date = date_range
+    start_str = start_date.strftime("%Y-%m-%d")
+    end_str = end_date.strftime("%Y-%m-%d")
     try:
-        lobby_df = run_query(f"""
+        new_users_total_df = run_query(f"""
+            SELECT COUNT(DISTINCT USER_ID) as TOTAL_NEW
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+            WHERE GAME_ID = {GAME_ID}
+            AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
+        """)
+        kpi_new_users = int(new_users_total_df["TOTAL_NEW"][0])
+    except Exception:
+        kpi_new_users = None
+
+# KPI 3: sessions in selected view
+kpi_sessions = None
+try:
+    if session_view == "Soatlik":
+        date_str = session_date.strftime("%Y-%m-%d")
+        sess_kpi_df = run_query(f"""
+            SELECT COUNT(DISTINCT SESSION_ID) as TOTAL_SESS
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+            WHERE GAME_ID = {GAME_ID}
+            AND EVENT_DATE = '{date_str}'
+        """)
+        kpi_sessions = int(sess_kpi_df["TOTAL_SESS"][0])
+    else:
+        days_map = {"So'nggi 7 kun": 7, "So'nggi 14 kun": 14, "So'nggi 30 kun": 30}
+        days = days_map[session_period]
+        end_dt = datetime.now()
+        start_dt = end_dt - timedelta(days=days)
+        sess_kpi_df = run_query(f"""
+            SELECT COUNT(DISTINCT SESSION_ID) as TOTAL_SESS
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+            WHERE GAME_ID = {GAME_ID}
+            AND EVENT_DATE BETWEEN '{start_dt.strftime("%Y-%m-%d")}' AND '{end_dt.strftime("%Y-%m-%d")}'
+        """)
+        kpi_sessions = int(sess_kpi_df["TOTAL_SESS"][0])
+except Exception:
+    kpi_sessions = None
+
+st.markdown(
+    f"""
+<div class="kpi-grid">
+  <div class="kpi">
+    <div class="kpi-label">👥 Foydalanuvchilar</div>
+    <div class="kpi-value">{f"{kpi_total_users:,}" if kpi_total_users is not None else "N/A"}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">✨ Yangi foydalanuvchilar (tanlangan davr)</div>
+    <div class="kpi-value">{f"{kpi_new_users:,}" if kpi_new_users is not None else "N/A"}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">📈 Sessiyalar (tanlangan ko‘rinish)</div>
+    <div class="kpi-value">{f"{kpi_sessions:,}" if kpi_sessions is not None else "N/A"}</div>
+  </div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+# Platform donut + legend (legend gets its own card like the chart)
+st.markdown(
+    '<div class="panel"><div class="panel-title">📱 Platformalar</div>'
+    '<div class="panel-sub">Foydalanuvchilar taqsimoti</div>',
+    unsafe_allow_html=True,
+)
+try:
+    platform_df = run_query(f"""
+        SELECT
+            PLATFORM_GROUP AS PLATFORM,
+            SUM(USERS) AS USERS
+        FROM (
             SELECT
-                EVENT_JSON:lobbyActionName::STRING as ACTION,
-                COUNT(*) as COUNT,
-                ROUND(SUM(CASE WHEN EVENT_JSON:isComplated::INT = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as COMPLETION_RATE
-            FROM {DB}.ACCOUNT_EVENTS
-            WHERE GAME_ID = {GAME_ID} AND EVENT_NAME = 'lobbyActionInExit'
-            AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-            GROUP BY EVENT_JSON:lobbyActionName::STRING ORDER BY COUNT DESC
-        """)
-        if not lobby_df.empty:
-            lobby_df['Description'] = lobby_df['ACTION'].apply(get_lobby_action_description)
-            lobby_display = lobby_df[['ACTION', 'Description', 'COUNT', 'COMPLETION_RATE']].rename(columns={
-                'ACTION': 'Action',
-                'COUNT': 'Count',
-                'COMPLETION_RATE': 'Completion %'
-            })
-            st.dataframe(lobby_display, use_container_width=True, hide_index=True)
-            chart = create_bar_chart(lobby_df, 'ACTION', 'COUNT', 'Action', 'Count', horizontal=True)
-            st.altair_chart(chart, use_container_width=True)
-        else:
-            st.info("No lobby action data available")
-    except:
-        st.info("No lobby action data available")
+                CASE
+                    WHEN PLATFORM = 'ANDROID' THEN 'Android'
+                    WHEN PLATFORM = 'IOS' THEN 'iOS'
+                    ELSE 'Boshqalar'
+                END AS PLATFORM_GROUP,
+                COUNT(DISTINCT USER_ID) AS USERS
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+            WHERE GAME_ID = {GAME_ID}
+            GROUP BY PLATFORM
+        )
+        GROUP BY PLATFORM_GROUP
+        ORDER BY USERS DESC
+    """)
 
-# ============ TAB 4: BREAKDOWNS ============
-with tab4:
-    st.subheader("📊 Player Segments")
-    st.caption("Audience breakdown by various parameters")
+    if not platform_df.empty:
+        total = int(platform_df["USERS"].sum())
+        platform_df["PERCENT"] = (platform_df["USERS"] / total * 100).round(1)
 
-    col_l, col_r = st.columns(2)
+        CHART_H = 300
+        c_chart, c_nums = st.columns([1.25, 0.85], gap="large", vertical_alignment="center")
 
-    with col_l:
-        st.subheader("📱 By Platform")
-        st.caption("Player distribution between Android and iOS")
-        try:
-            p_df = run_query(f"""
-                SELECT PLATFORM, COUNT(DISTINCT USER_ID) as PLAYERS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                GROUP BY PLATFORM
-            """)
-            if not p_df.empty:
-                chart = create_bar_chart(p_df, 'PLATFORM', 'PLAYERS', 'Platform', 'Players')
-                st.altair_chart(chart, use_container_width=True)
-        except:
-            st.info("No data available")
+        with c_chart:
+            donut = (
+                alt.Chart(platform_df)
+                .mark_arc(innerRadius=118, outerRadius=150)
+                .encode(
+                    theta=alt.Theta(field="USERS", type="quantitative"),
+                    color=alt.Color(
+                        field="PLATFORM",
+                        type="nominal",
+                        scale=alt.Scale(
+                            domain=["Android", "iOS", "Boshqalar"],
+                            range=[COLORS["android"], COLORS["ios"], COLORS["other"]],
+                        ),
+                        legend=None,
+                    ),
+                    tooltip=[
+                        alt.Tooltip("PLATFORM:N", title="Platforma"),
+                        alt.Tooltip("USERS:Q", title="Foydalanuvchilar", format=","),
+                        alt.Tooltip("PERCENT:Q", title="Ulush", format=".1f"),
+                    ],
+                )
+                # Lower top padding moves donut up visually
+                .properties(height=CHART_H, padding={"top": 6, "left": 8, "right": 8, "bottom": 8})
+            )
+            st.altair_chart(donut, use_container_width=True)
 
-    with col_r:
-        st.subheader("📦 By App Version")
-        st.caption("Which versions players are using")
-        try:
-            v_df = run_query(f"""
-                SELECT CLIENT_VERSION as VERSION, COUNT(DISTINCT USER_ID) as PLAYERS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                GROUP BY CLIENT_VERSION ORDER BY PLAYERS DESC
-            """)
-            if not v_df.empty:
-                chart = create_bar_chart(v_df, 'VERSION', 'PLAYERS', 'Version', 'Players', horizontal=True)
-                st.altair_chart(chart, use_container_width=True)
-        except:
-            st.info("No data available")
+        with c_nums:
+            st.markdown('<div class="legend-card">', unsafe_allow_html=True)
 
-    st.markdown("---")
-
-    st.subheader("🌍 By Country (Top 10)")
-    st.caption("Geographic distribution of players")
-    try:
-        c_df = run_query(f"""
-            SELECT USER_COUNTRY as COUNTRY, COUNT(DISTINCT USER_ID) as PLAYERS
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-            GROUP BY USER_COUNTRY ORDER BY PLAYERS DESC LIMIT 10
-        """)
-        if not c_df.empty:
-            chart = create_bar_chart(c_df, 'COUNTRY', 'PLAYERS', 'Country', 'Players', horizontal=True)
-            st.altair_chart(chart, use_container_width=True)
-    except:
-        st.info("No data available")
-
-    st.markdown("---")
-
-    col_h, col_d = st.columns(2)
-
-    with col_h:
-        st.subheader("🕐 Activity by Hour")
-        st.caption("When players are most active during the day (UTC +5)")
-        try:
-            h_df = run_query(f"""
-                SELECT
-                    HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP)) as HOUR,
-                    COUNT(*) as ACTIONS
-                FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-                GROUP BY HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP))
-                ORDER BY HOUR
-            """)
-            if not h_df.empty:
-                chart = create_bar_chart(h_df, 'HOUR', 'ACTIONS', 'Hour', 'Actions')
-                st.altair_chart(chart, use_container_width=True)
-        except:
-            st.info("No data available")
-
-    with col_d:
-        st.subheader("📅 Activity by Day of Week")
-        st.caption("Which days players play more")
-        try:
-            dow_df = run_query(f"""
-                SELECT
-                    CASE DAYOFWEEK(EVENT_DATE)
-                        WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue'
-                        WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat'
-                    END as DAY,
-                    DAYOFWEEK(EVENT_DATE) as day_num,
-                    COUNT(DISTINCT USER_ID) as PLAYERS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY {WHERE}
-                GROUP BY DAYOFWEEK(EVENT_DATE) ORDER BY day_num
-            """)
-            if not dow_df.empty:
-                chart = create_bar_chart(dow_df, 'DAY', 'PLAYERS', 'Day', 'Players')
-                st.altair_chart(chart, use_container_width=True)
-        except:
-            st.info("No data available")
-
-# ============ TAB 5: PLAYER ACTIONS ============
-with tab5:
-    st.subheader("🎯 In-Game Player Actions")
-    st.caption("All player interactions: launches, completions, purchases, and more")
-
-    try:
-        e_df = run_query(f"""
-            SELECT EVENT_NAME, COUNT(*) as COUNT
-            FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-            GROUP BY EVENT_NAME ORDER BY COUNT DESC LIMIT 20
-        """)
-        if not e_df.empty:
-            e_df['Action'] = e_df['EVENT_NAME'].apply(get_friendly_name)
-            e_df['Description'] = e_df['EVENT_NAME'].apply(get_action_description)
-            e_df['Total'] = e_df['COUNT']
-
-            st.dataframe(
-                e_df[['Action', 'Description', 'EVENT_NAME', 'Total']].rename(columns={'EVENT_NAME': 'Event Code'}),
-                use_container_width=True,
-                hide_index=True
+            st.markdown(
+                f"""
+<div class="stat-row" style="padding-top:2px;">
+  <div>
+    <div class="stat-left"><span class="dot" style="background:{COLORS["accent"]};"></span>
+      <span class="stat-label">Jami</span>
+    </div>
+  </div>
+  <div class="stat-right">{total:,}</div>
+</div>
+""",
+                unsafe_allow_html=True,
             )
 
-            st.subheader("📊 Top Player Actions")
-            chart = create_bar_chart(e_df, 'Action', 'Total', 'Action', 'Count', horizontal=True)
-            st.altair_chart(chart, use_container_width=True)
-    except:
-        st.info("No action data available")
+            for _, r in platform_df.iterrows():
+                p = r["PLATFORM"]
+                u = int(r["USERS"])
+                pr = float(r["PERCENT"])
+                color = COLORS["android"] if p == "Android" else COLORS["ios"] if p == "iOS" else COLORS["other"]
 
-    st.markdown("---")
+                st.markdown(
+                    f"""
+<div class="stat-row">
+  <div>
+    <div class="stat-left"><span class="dot" style="background:{color};"></span>
+      <span class="stat-label">{p}</span>
+    </div>
+    <div class="stat-sub">{pr:.1f}%</div>
+  </div>
+  <div class="stat-right">{u:,}</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
 
-    st.subheader("🔍 Action Deep Dive")
-    st.caption("Select an action to view daily trends")
+            st.markdown("</div></div>", unsafe_allow_html=True)
 
-    try:
-        event_names = run_query(f"""
-            SELECT DISTINCT EVENT_NAME
-            FROM {DB}.ACCOUNT_EVENTS {WHERE_EVENTS}
-            ORDER BY EVENT_NAME
-        """)
-        if not event_names.empty:
-            event_options = {get_friendly_name(name): name for name in event_names['EVENT_NAME'].tolist()}
-            selected_friendly = st.selectbox("Select action", list(event_options.keys()))
-            selected_event = event_options[selected_friendly]
+    else:
+        st.info("Ma'lumotlar mavjud emas")
+except Exception:
+    st.info("Ma'lumotlar mavjud emas")
+st.markdown("</div>", unsafe_allow_html=True)
 
-            if selected_event:
-                event_detail = run_query(f"""
-                    SELECT
-                        DATE(EVENT_TIMESTAMP) as DATE,
-                        COUNT(*) as COUNT,
-                        COUNT(DISTINCT USER_ID) as UNIQUE_USERS
-                    FROM {DB}.ACCOUNT_EVENTS
-                    WHERE GAME_ID = {GAME_ID}
-                    AND EVENT_NAME = '{selected_event}'
-                    AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-                    GROUP BY DATE(EVENT_TIMESTAMP)
-                    ORDER BY DATE
-                """)
-                if not event_detail.empty:
-                    col_e1, col_e2 = st.columns(2)
-                    with col_e1:
-                        st.metric("📊 Total Count", f"{event_detail['COUNT'].sum():,}", help="How many times this action occurred")
-                    with col_e2:
-                        st.metric("👥 Unique Players", f"{event_detail['UNIQUE_USERS'].sum():,}", help="How many different players performed this action")
-
-                    st.subheader(f"📈 Trend: {selected_friendly}")
-                    chart = create_time_bar_chart(event_detail, 'DATE', 'COUNT', 'Date', 'Count')
-                    st.altair_chart(chart, use_container_width=True)
-    except:
-        st.info("No data available")
-
-    st.markdown("---")
-
-    # Notification Permission Analysis
-    st.subheader("🔔 Notification Permission")
-    st.caption("How players respond to notification permission request")
+# New users
+st.markdown(
+    '<div class="panel"><div class="panel-title">👥 Yangi foydalanuvchilar</div>'
+    '<div class="panel-sub">Tanlangan davr bo‘yicha trend</div>',
+    unsafe_allow_html=True,
+)
+if len(date_range) == 2:
+    start_date, end_date = date_range
+    start_str = start_date.strftime("%Y-%m-%d")
+    end_str = end_date.strftime("%Y-%m-%d")
 
     try:
-        notif_df = run_query(f"""
-            SELECT
-                EVENT_JSON:permissionGranted::INT as GRANTED,
-                COUNT(*) as COUNT,
-                COUNT(DISTINCT USER_ID) as UNIQUE_USERS
-            FROM {DB}.ACCOUNT_EVENTS
-            WHERE GAME_ID = {GAME_ID}
-            AND EVENT_NAME = 'NotificationPermissionGranted'
-            AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-            GROUP BY EVENT_JSON:permissionGranted::INT
-        """)
-
-        if not notif_df.empty:
-            col_n1, col_n2, col_n3 = st.columns(3)
-
-            # Total requests
-            total_count = int(notif_df['COUNT'].sum())
-            total_users = int(notif_df['UNIQUE_USERS'].sum())
-
-            # Granted (1)
-            granted_row = notif_df[notif_df['GRANTED'] == 1]
-            granted_count = int(granted_row['COUNT'].iloc[0]) if not granted_row.empty else 0
-            granted_users = int(granted_row['UNIQUE_USERS'].iloc[0]) if not granted_row.empty else 0
-
-            # Denied (0)
-            denied_row = notif_df[notif_df['GRANTED'] == 0]
-            denied_count = int(denied_row['COUNT'].iloc[0]) if not denied_row.empty else 0
-            denied_users = int(denied_row['UNIQUE_USERS'].iloc[0]) if not denied_row.empty else 0
-
-            # Calculate rate
-            grant_rate = round(granted_count * 100 / total_count, 1) if total_count > 0 else 0
-
-            with col_n1:
-                st.metric("📊 Total Requests", f"{total_count:,}", help="Total notification permission requests")
-                st.metric("👥 Unique Players", f"{total_users:,}")
-
-            with col_n2:
-                st.metric("✅ Granted", f"{granted_count:,}", help="Players who allowed notifications")
-                st.metric("👥 Unique Players", f"{granted_users:,}")
-
-            with col_n3:
-                st.metric("❌ Denied", f"{denied_count:,}", help="Players who denied notifications")
-                st.metric("👥 Unique Players", f"{denied_users:,}")
-
-            st.markdown(f"**Grant Rate: {grant_rate}%** of players allowed notifications")
-
-            # Daily trend
-            notif_trend = run_query(f"""
+        if period_type == "Kunlik":
+            new_users_df = run_query(f"""
                 SELECT
-                    DATE(EVENT_TIMESTAMP) as DATE,
-                    SUM(CASE WHEN EVENT_JSON:permissionGranted::INT = 1 THEN 1 ELSE 0 END) as GRANTED,
-                    SUM(CASE WHEN EVENT_JSON:permissionGranted::INT = 0 THEN 1 ELSE 0 END) as DENIED
-                FROM {DB}.ACCOUNT_EVENTS
+                    PLAYER_START_DATE as SANA,
+                    COUNT(DISTINCT USER_ID) as YANGI_USERS
+                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
                 WHERE GAME_ID = {GAME_ID}
-                AND EVENT_NAME = 'NotificationPermissionGranted'
-                AND EVENT_TIMESTAMP BETWEEN '{start_str}' AND '{end_str}'
-                GROUP BY DATE(EVENT_TIMESTAMP)
-                ORDER BY DATE
+                AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
+                GROUP BY PLAYER_START_DATE
+                ORDER BY PLAYER_START_DATE
+            """)
+        elif period_type == "Haftalik":
+            new_users_df = run_query(f"""
+                SELECT
+                    DATE_TRUNC('week', PLAYER_START_DATE) as SANA,
+                    COUNT(DISTINCT USER_ID) as YANGI_USERS
+                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+                WHERE GAME_ID = {GAME_ID}
+                AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
+                GROUP BY DATE_TRUNC('week', PLAYER_START_DATE)
+                ORDER BY SANA
+            """)
+        else:
+            new_users_df = run_query(f"""
+                SELECT
+                    DATE_TRUNC('month', PLAYER_START_DATE) as SANA,
+                    COUNT(DISTINCT USER_ID) as YANGI_USERS
+                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+                WHERE GAME_ID = {GAME_ID}
+                AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
+                GROUP BY DATE_TRUNC('month', PLAYER_START_DATE)
+                ORDER BY SANA
             """)
 
-            if not notif_trend.empty:
-                st.subheader("📈 Daily Notification Permission Trend")
-                # Melt data for grouped bar chart
-                notif_melted = notif_trend.melt(id_vars=['DATE'], value_vars=['GRANTED', 'DENIED'],
-                                                 var_name='Status', value_name='Count')
-                chart = alt.Chart(notif_melted).mark_bar().encode(
-                    x=alt.X('DATE:T', title='Date'),
-                    y=alt.Y('Count:Q', title='Count'),
-                    color=alt.Color('Status:N', scale=alt.Scale(domain=['GRANTED', 'DENIED'], range=[COLORS[0], COLORS[4]])),
-                    tooltip=[alt.Tooltip('Count:Q', format=',', title='')]
-                ).properties(height=400)
-                st.altair_chart(chart, use_container_width=True)
+        if not new_users_df.empty:
+            new_users_df["SANA"] = pd.to_datetime(new_users_df["SANA"])
+            new_users_df["SANA_STR"] = new_users_df["SANA"].dt.strftime("%Y-%m-%d")
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Jami", f"{int(new_users_df['YANGI_USERS'].sum()):,}")
+            m2.metric("Eng yuqori", f"{int(new_users_df['YANGI_USERS'].max()):,}")
+            m3.metric("O‘rtacha", f"{int(round(new_users_df['YANGI_USERS'].mean(), 0)):,}")
+
+            chart = (
+                alt.Chart(new_users_df)
+                .mark_bar(color=COLORS["new_users"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+                .encode(
+                    x=alt.X("SANA_STR:O", title="", axis=alt.Axis(labelAngle=-30), sort=None),
+                    y=alt.Y("YANGI_USERS:Q", title=""),
+                    tooltip=[
+                        alt.Tooltip("SANA_STR:O", title="Sana"),
+                        alt.Tooltip("YANGI_USERS:Q", title="Yangi", format=","),
+                    ],
+                )
+                .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
+            )
+            st.altair_chart(chart, use_container_width=True)
         else:
-            st.info("No notification permission data for selected period")
-    except:
-        st.info("No notification permission data available")
+            st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
+    except Exception:
+        st.info("Ma'lumotlarni yuklashda xatolik")
+st.markdown("</div>", unsafe_allow_html=True)
 
-    # Action reference
-    with st.expander("📖 Action Reference"):
-        st.markdown("""
-        **What player actions mean:**
-
-        | Action | Description |
-        |--------|-------------|
-        | 🚀 Game Start | Player started a new game session |
-        | 🎮 Mini-game Played | Player played one of the mini-games |
-        | 🏠 Lobby Action | Player interacted with main menu elements |
-        | ⬆️ Level Up | Player reached a new level |
-        | 🏆 Achievement Unlocked | Player unlocked an achievement |
-        | 💰 Purchase | Player made a purchase |
-        | 📺 Ad Watched | Player watched an ad |
+# Sessions
+st.markdown(
+    '<div class="panel"><div class="panel-title">📈 Sessiyalar</div>'
+    '<div class="panel-sub">Faollik ko‘rinishi</div>',
+    unsafe_allow_html=True,
+)
+try:
+    if session_view == "Soatlik":
+        date_str = session_date.strftime("%Y-%m-%d")
+        sessions_df = run_query(f"""
+            SELECT
+                HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP)) as SOAT,
+                COUNT(*) as HODISALAR,
+                COUNT(DISTINCT USER_ID) as FOYDALANUVCHILAR
+            FROM {DB}.ACCOUNT_EVENTS
+            WHERE GAME_ID = {GAME_ID}
+            AND DATE(EVENT_TIMESTAMP) = '{date_str}'
+            GROUP BY HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP))
+            ORDER BY SOAT
         """)
 
-st.markdown("---")
-st.caption("📊 Data: Unity Analytics via Snowflake | 🎮 Bek va Lola")
+        if not sessions_df.empty:
+            sessions_df["SOAT"] = pd.to_numeric(sessions_df["SOAT"], errors="coerce").fillna(0).astype(int)
+            sessions_df["HODISALAR"] = pd.to_numeric(sessions_df["HODISALAR"], errors="coerce").fillna(0).astype(int)
+            sessions_df["FOYDALANUVCHILAR"] = pd.to_numeric(sessions_df["FOYDALANUVCHILAR"], errors="coerce").fillna(0).astype(int)
+            sessions_df["SOAT_LABEL"] = sessions_df["SOAT"].apply(lambda x: f"{x:02d}:00")
+
+            m1, m2 = st.columns(2)
+            m1.metric("Hodisalar", f"{int(sessions_df['HODISALAR'].sum()):,}")
+            m2.metric("Faol foydalanuvchilar", f"{int(sessions_df['FOYDALANUVCHILAR'].sum()):,}")
+
+            chart = (
+                alt.Chart(sessions_df)
+                .mark_bar(color=COLORS["sessions"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+                .encode(
+                    x=alt.X("SOAT_LABEL:N", title="", sort=None, axis=alt.Axis(labelAngle=0)),
+                    y=alt.Y("HODISALAR:Q", title=""),
+                    tooltip=[
+                        alt.Tooltip("SOAT_LABEL:N", title="Soat"),
+                        alt.Tooltip("HODISALAR:Q", title="Hodisalar", format=","),
+                        alt.Tooltip("FOYDALANUVCHILAR:Q", title="Foydalanuvchilar", format=","),
+                    ],
+                )
+                .properties(height=320)
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("Tanlangan sana uchun ma'lumotlar mavjud emas")
+    else:
+        days_map = {"So'nggi 7 kun": 7, "So'nggi 14 kun": 14, "So'nggi 30 kun": 30}
+        days = days_map[session_period]
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+
+        sessions_df = run_query(f"""
+            SELECT
+                EVENT_DATE as SANA,
+                COUNT(DISTINCT SESSION_ID) as SESSIYALAR,
+                ROUND(AVG(TOTAL_TIME_MS) / 60000, 1) as ORTACHA_DAVOMIYLIK
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+            WHERE GAME_ID = {GAME_ID}
+            AND EVENT_DATE BETWEEN '{start_date.strftime("%Y-%m-%d")}' AND '{end_date.strftime("%Y-%m-%d")}'
+            GROUP BY EVENT_DATE
+            ORDER BY EVENT_DATE
+        """)
+
+        if not sessions_df.empty:
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Jami", f"{int(sessions_df['SESSIYALAR'].sum()):,}")
+            m2.metric("O‘rtacha kunlik", f"{int(sessions_df['SESSIYALAR'].mean()):,}")
+            m3.metric("O‘rtacha vaqt (daq)", f"{round(float(sessions_df['ORTACHA_DAVOMIYLIK'].mean()), 1)}")
+
+            sessions_df["SANA"] = pd.to_datetime(sessions_df["SANA"])
+            sessions_df["SANA_STR"] = sessions_df["SANA"].dt.strftime("%Y-%m-%d")
+
+            chart = (
+                alt.Chart(sessions_df)
+                .mark_bar(color=COLORS["sessions"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6)
+                .encode(
+                    x=alt.X("SANA_STR:O", title="", axis=alt.Axis(labelAngle=-30), sort=None),
+                    y=alt.Y("SESSIYALAR:Q", title=""),
+                    tooltip=[
+                        alt.Tooltip("SANA_STR:O", title="Sana"),
+                        alt.Tooltip("SESSIYALAR:Q", title="Sessiyalar", format=","),
+                        alt.Tooltip("ORTACHA_DAVOMIYLIK:Q", title="Daqiqa", format=".1f"),
+                    ],
+                )
+                .properties(height=320)
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("Ma'lumotlar mavjud emas")
+except Exception:
+    st.info("Ma'lumotlarni yuklashda xatolik")
+st.markdown("</div>", unsafe_allow_html=True)
+
+# Mini-game trend
+st.markdown(
+    '<div class="panel"><div class="panel-title">🎮 Mini o‘yinlar trendi</div>'
+    '<div class="panel-sub">Tanlangan davr bo‘yicha</div>',
+    unsafe_allow_html=True,
+)
+if len(mg_date_range) == 2:
+    mg_start, mg_end = mg_date_range
+    mg_start_str = mg_start.strftime("%Y-%m-%d")
+    mg_end_str = mg_end.strftime("%Y-%m-%d")
+
+    try:
+        if selected_mg == "Barchasi":
+            mg_stats = run_query(f"""
+                SELECT
+                    DATE(EVENT_TIMESTAMP) as SANA,
+                    COUNT(*) as OYINLAR
+                FROM {DB}.ACCOUNT_EVENTS
+                WHERE GAME_ID = {GAME_ID}
+                AND EVENT_NAME = 'playedMiniGameStatus'
+                AND EVENT_TIMESTAMP BETWEEN '{mg_start_str}' AND '{mg_end_str}'
+                GROUP BY DATE(EVENT_TIMESTAMP)
+                ORDER BY SANA
+            """)
+        else:
+            original_name = mg_original.get(selected_mg, selected_mg)
+            mg_stats = run_query(f"""
+                SELECT
+                    DATE(EVENT_TIMESTAMP) as SANA,
+                    COUNT(*) as OYINLAR
+                FROM {DB}.ACCOUNT_EVENTS
+                WHERE GAME_ID = {GAME_ID}
+                AND EVENT_NAME = 'playedMiniGameStatus'
+                AND EVENT_JSON:MiniGameName::STRING = '{original_name}'
+                AND EVENT_TIMESTAMP BETWEEN '{mg_start_str}' AND '{mg_end_str}'
+                GROUP BY DATE(EVENT_TIMESTAMP)
+                ORDER BY SANA
+            """)
+
+        if not mg_stats.empty:
+            mg_stats["SANA"] = pd.to_datetime(mg_stats["SANA"])
+
+            line = (
+                alt.Chart(mg_stats)
+                .mark_line(color=COLORS["minigame"], strokeWidth=2.8)
+                .encode(
+                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10)),
+                    y=alt.Y("OYINLAR:Q", title=""),
+                    tooltip=[
+                        alt.Tooltip("SANA:T", title="Sana", format="%Y-%m-%d"),
+                        alt.Tooltip("OYINLAR:Q", title="O‘yinlar", format=","),
+                    ],
+                )
+            )
+            points = (
+                alt.Chart(mg_stats)
+                .mark_circle(size=70, color=COLORS["minigame"], opacity=0.9)
+                .encode(x="SANA:T", y="OYINLAR:Q")
+            )
+            st.altair_chart((line + points).properties(height=320), use_container_width=True)
+        else:
+            st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
+    except Exception:
+        st.info("Ma'lumotlarni yuklashda xatolik")
+st.markdown("</div>", unsafe_allow_html=True)
+
+# Top 5 mini-games
+st.markdown(
+    '<div class="panel"><div class="panel-title">🏆 TOP 5 mini o‘yin</div>'
+    '<div class="panel-sub">Tanlangan davr bo‘yicha</div>',
+    unsafe_allow_html=True,
+)
+try:
+    top_games = run_query(f"""
+        SELECT
+            EVENT_JSON:MiniGameName::STRING as MINI_GAME,
+            COUNT(*) as OYINLAR
+        FROM {DB}.ACCOUNT_EVENTS
+        WHERE GAME_ID = {GAME_ID} AND EVENT_NAME = 'playedMiniGameStatus'
+        AND EVENT_JSON:MiniGameName::STRING IS NOT NULL
+        GROUP BY EVENT_JSON:MiniGameName::STRING
+        ORDER BY OYINLAR DESC
+        LIMIT 5
+    """)
+
+    if not top_games.empty:
+        top_games["NOMI"] = top_games["MINI_GAME"].apply(get_minigame_name)
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+
+        st.markdown('<div class="rank-card">', unsafe_allow_html=True)
+        for i, row in top_games.reset_index(drop=True).iterrows():
+            medal = medals[i] if i < len(medals) else f"#{i+1}"
+            st.markdown(
+                f"""
+<div class="rank-row">
+  <div class="rank-badge">{medal}</div>
+  <div class="rank-name">{row["NOMI"]}</div>
+  <div class="rank-val">{int(row["OYINLAR"]):,}</div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        chart = (
+            alt.Chart(top_games)
+            .mark_bar(color=COLORS["purple"], cornerRadiusTopRight=8, cornerRadiusBottomRight=8, size=34)
+            .encode(
+                x=alt.X("OYINLAR:Q", title=""),
+                y=alt.Y("NOMI:N", title="", sort="-x"),
+                tooltip=[
+                    alt.Tooltip("NOMI:N", title="O‘yin"),
+                    alt.Tooltip("OYINLAR:Q", title="O‘ynalishlar", format=","),
+                ],
+            )
+            .properties(height=290)
+        )
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.info("Ma'lumotlar mavjud emas")
+except Exception:
+    st.info("Ma'lumotlarni yuklashda xatolik")
+st.markdown("</div>", unsafe_allow_html=True)
+
+# Retention (Uzbek)
+st.markdown(
+    '<div class="panel"><div class="panel-title">🔄 Saqlanib qolish darajasi</div>'
+    '<div class="panel-sub">Ma’lum kundan keyin ilovaga qaytgan foydalanuvchilar foizi</div>',
+    unsafe_allow_html=True,
+)
+
+c1, c2, c3 = st.columns(3)
+
+try:
+    d1 = run_query(f"""
+        WITH first_day AS (
+            SELECT USER_ID, MIN(EVENT_DATE) as first_date
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY WHERE GAME_ID = {GAME_ID} GROUP BY USER_ID
+        ),
+        returned AS (
+            SELECT f.USER_ID FROM first_day f
+            JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s ON f.USER_ID = s.USER_ID
+            AND s.EVENT_DATE = DATEADD(day, 1, f.first_date) AND s.GAME_ID = {GAME_ID}
+        )
+        SELECT ROUND(COUNT(DISTINCT r.USER_ID) * 100.0 / NULLIF(COUNT(DISTINCT f.USER_ID), 0), 1) as RET
+        FROM first_day f LEFT JOIN returned r ON f.USER_ID = r.USER_ID
+    """)
+    c1.metric("1-kun", f"{float(d1['RET'][0] or 0.0)}%")
+except Exception:
+    c1.metric("1-kun", "N/A")
+
+try:
+    d7 = run_query(f"""
+        WITH first_day AS (
+            SELECT USER_ID, MIN(EVENT_DATE) as first_date
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY WHERE GAME_ID = {GAME_ID} GROUP BY USER_ID
+        ),
+        returned AS (
+            SELECT f.USER_ID FROM first_day f
+            JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s ON f.USER_ID = s.USER_ID
+            AND s.EVENT_DATE = DATEADD(day, 7, f.first_date) AND s.GAME_ID = {GAME_ID}
+        )
+        SELECT ROUND(COUNT(DISTINCT r.USER_ID) * 100.0 / NULLIF(COUNT(DISTINCT f.USER_ID), 0), 1) as RET
+        FROM first_day f LEFT JOIN returned r ON f.USER_ID = r.USER_ID
+    """)
+    c2.metric("7-kun", f"{float(d7['RET'][0] or 0.0)}%")
+except Exception:
+    c2.metric("7-kun", "N/A")
+
+try:
+    d30 = run_query(f"""
+        WITH first_day AS (
+            SELECT USER_ID, MIN(EVENT_DATE) as first_date
+            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY WHERE GAME_ID = {GAME_ID} GROUP BY USER_ID
+        ),
+        returned AS (
+            SELECT f.USER_ID FROM first_day f
+            JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s ON f.USER_ID = s.USER_ID
+            AND s.EVENT_DATE = DATEADD(day, 30, f.first_date) AND s.GAME_ID = {GAME_ID}
+        )
+        SELECT ROUND(COUNT(DISTINCT r.USER_ID) * 100.0 / NULLIF(COUNT(DISTINCT f.USER_ID), 0), 1) as RET
+        FROM first_day f LEFT JOIN returned r ON f.USER_ID = r.USER_ID
+    """)
+    c3.metric("30-kun", f"{float(d30['RET'][0] or 0.0)}%")
+except Exception:
+    c3.metric("30-kun", "N/A")
+
+st.markdown("</div>", unsafe_allow_html=True)
+st.caption("📊 Unity Analytics • Ma’lumotlar kechikish bilan yangilanishi mumkin.")
