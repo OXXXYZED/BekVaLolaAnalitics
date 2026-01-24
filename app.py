@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import snowflake.connector
 
-# Настройки страницы
+# Настройки страницы 12345
 st.set_page_config(
     page_title="Bek va Lola Analytics",
     page_icon="🎮",
