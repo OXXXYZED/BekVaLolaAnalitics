@@ -4,6 +4,8 @@ import altair as alt
 from datetime import datetime, timedelta
 from decimal import Decimal
 import snowflake.connector
+import base64
+from pathlib import Path
 
 # ----------------------------
 # Page
@@ -41,10 +43,13 @@ COLORS = {
     "neon2": "rgba(124,58,237,0.12)",
 }
 
-# Put your local logo here (recommended)
-# LOGO_PATH = "https://play.google.com/store/apps/details?id=com.unitedsoft.bekvalola"
-# Or a URL (optional fallback)
-LOGO_URL = "https://play-lh.googleusercontent.com/nQ1jBuyOk6UG2AEMwhHPigxlqgFhrzOE1ag3tXFAqFP_PhuRGNNkprI8xLgeK-cPgpAuZo0YDblHfWDZNyjzDw" 
+# Load local logo as base64
+def get_logo_base64():
+    logo_path = Path(__file__).parent / "images" / "Beklola.png"
+    with open(logo_path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+LOGO_BASE64 = get_logo_base64() 
 
 
 # ----------------------------
@@ -363,14 +368,11 @@ div[aria-label="Calendar"] {{
   justify-content:center;
   align-items:center;
   gap: 14px;
-  margin: 6px 0 14px 0;
+  margin: 6px 0 24px 0;
 }}
 .header img {{
-  width: 62px;
-  height: 62px;
-  border-radius: 16px;
-  border: 1px solid rgba(15,23,42,0.10);
-  box-shadow: 0 10px 24px rgba(15,23,42,0.08);
+  height: 60px;
+  width: auto;
 }}
 .h-title {{
   font-family: 'Poppins', 'Inter', sans-serif !important;
@@ -656,8 +658,7 @@ DB = "UNITY_ANALYTICS_GCP_US_CENTRAL1_UNITY_ANALYTICS_PDA.SHARES"
 # ----------------------------
 st.markdown(f'''
 <div class="header">
-    <img src="{LOGO_URL}" style="width:62px;height:62px;border-radius:16px;border:1px solid rgba(15,23,42,0.10);box-shadow:0 10px 24px rgba(15,23,42,0.08);" />
-    <div class="h-title">Bek va Lola</div>
+    <img src="data:image/png;base64,{LOGO_BASE64}" style="height:60px;width:auto;" />
 </div>
 ''', unsafe_allow_html=True)
 
@@ -805,10 +806,8 @@ try:
             st.altair_chart(donut, use_container_width=True)
 
         with c_nums:
-            st.markdown('<div class="legend-card card" style="background: #FFFFFF; border: 1px solid rgba(15,23,42,0.14); border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(15,23,42,0.06);">', unsafe_allow_html=True)
-
-            st.markdown(
-                f"""
+            # Build legend HTML as single block
+            legend_html = f'''
 <div class="stat-row">
   <div>
     <div class="stat-left"><span class="dot" style="background:{COLORS["accent"]};"></span>
@@ -816,10 +815,7 @@ try:
     </div>
   </div>
   <div class="stat-right">{total:,}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
+</div>'''
 
             for _, r in platform_df.iterrows():
                 p = r["PLATFORM"]
@@ -827,8 +823,7 @@ try:
                 pr = float(r["PERCENT"])
                 color = COLORS["android"] if p == "Android" else COLORS["ios"] if p == "iOS" else COLORS["other"]
 
-                st.markdown(
-                    f"""
+                legend_html += f'''
 <div class="stat-row">
   <div>
     <div class="stat-left"><span class="dot" style="background:{color};"></span>
@@ -837,12 +832,9 @@ try:
     <div class="stat-sub">{pr:.1f}%</div>
   </div>
   <div class="stat-right">{u:,}</div>
-</div>
-""",
-                    unsafe_allow_html=True,
-                )
+</div>'''
 
-            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown(f'<div class="legend-card card" style="background: #FFFFFF; border: 1px solid rgba(15,23,42,0.14); border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(15,23,42,0.06);">{legend_html}</div>', unsafe_allow_html=True)
 
     else:
         st.info("Ma'lumotlar mavjud emas")
@@ -1189,20 +1181,18 @@ try:
         top_games["NOMI"] = top_games["MINI_GAME"].apply(get_minigame_name)
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
 
-        st.markdown('<div class="rank-card card">', unsafe_allow_html=True)
+        # Build all rows as single HTML block
+        rows_html = ""
         for i, row in top_games.reset_index(drop=True).iterrows():
             medal = medals[i] if i < len(medals) else f"#{i+1}"
-            st.markdown(
-                f"""
+            rows_html += f'''
 <div class="rank-row">
   <div class="rank-badge">{medal}</div>
   <div class="rank-name">{row["NOMI"]}</div>
   <div class="rank-val">{int(row["OYINLAR"]):,}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-        st.markdown("</div>", unsafe_allow_html=True)
+</div>'''
+
+        st.markdown(f'<div class="rank-card card" style="margin-bottom: 16px;">{rows_html}</div>', unsafe_allow_html=True)
 
         chart = (
             alt.Chart(top_games)
