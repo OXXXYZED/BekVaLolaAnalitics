@@ -75,7 +75,7 @@ def _clean_light_theme():
     }
 
 alt.themes.register("clean_light", _clean_light_theme)
-alt.themes.enable("clean_light")
+alt.theme.enable("clean_light")
 
 
 # ----------------------------
@@ -384,7 +384,7 @@ div[aria-label="Calendar"] {{
 /* ---------- KPI ---------- */
 .kpi-grid {{
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin-bottom: 14px;
 }}
@@ -411,6 +411,8 @@ div[aria-label="Calendar"] {{
 .kpi-ico.purple {{ background: rgba(124,58,237,0.10); color:#7C3AED; }}
 .kpi-ico.orange {{ background: rgba(245,158,11,0.12); color:#F59E0B; }}
 .kpi-ico.green {{ background: rgba(22,163,74,0.10); color:#16A34A; }}
+.kpi-ico.blue {{ background: rgba(59,130,246,0.12); color:#3B82F6; }}
+.kpi-ico.purple {{ background: rgba(139,92,246,0.12); color:#8B5CF6; }}
 
 .kpi-label {{
   font-size: 0.95rem;
@@ -626,6 +628,7 @@ def get_connection():
         schema=st.secrets["snowflake"]["schema"],
     )
 
+@st.cache_data(ttl=300)
 def run_query(query: str) -> pd.DataFrame:
     conn = get_connection()
     cur = conn.cursor()
@@ -704,6 +707,33 @@ try:
 except Exception:
     kpi_sessions = None
 
+# DAU - Daily Active Users (yesterday, as today may be incomplete)
+try:
+    yesterday = datetime.now() - timedelta(days=1)
+    dau_df = run_query(f"""
+        SELECT COUNT(DISTINCT USER_ID) as DAU
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE = '{yesterday.strftime("%Y-%m-%d")}'
+    """)
+    kpi_dau = int(dau_df["DAU"][0])
+except Exception:
+    kpi_dau = None
+
+# MAU - Monthly Active Users (last 30 days)
+try:
+    mau_end = datetime.now()
+    mau_start = mau_end - timedelta(days=30)
+    mau_df = run_query(f"""
+        SELECT COUNT(DISTINCT USER_ID) as MAU
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE BETWEEN '{mau_start.strftime("%Y-%m-%d")}' AND '{mau_end.strftime("%Y-%m-%d")}'
+    """)
+    kpi_mau = int(mau_df["MAU"][0])
+except Exception:
+    kpi_mau = None
+
 st.markdown(
     f"""
 <div class="kpi-grid">
@@ -721,6 +751,22 @@ st.markdown(
       <div class="kpi-label">Yangi foydalanuvchilar</div>
     </div>
     <div class="kpi-value">{f"{kpi_new_users:,}" if kpi_new_users is not None else "N/A"}</div>
+  </div>
+
+  <div class="kpi card">
+    <div class="kpi-head">
+      <div class="kpi-ico blue">📊</div>
+      <div class="kpi-label">DAU</div>
+    </div>
+    <div class="kpi-value">{f"{kpi_dau:,}" if kpi_dau is not None else "N/A"}</div>
+  </div>
+
+  <div class="kpi card">
+    <div class="kpi-head">
+      <div class="kpi-ico purple">📅</div>
+      <div class="kpi-label">MAU</div>
+    </div>
+    <div class="kpi-value">{f"{kpi_mau:,}" if kpi_mau is not None else "N/A"}</div>
   </div>
 
   <div class="kpi card">
@@ -803,7 +849,7 @@ try:
                 )
                 .properties(height=CHART_H, padding={"top": 6, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(donut, use_container_width=True)
+            st.altair_chart(donut, width='stretch')
 
         with c_nums:
             # Build legend HTML as single block
@@ -922,7 +968,7 @@ if len(date_range) == 2:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
     except Exception:
@@ -990,7 +1036,7 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
         else:
             st.info("Tanlangan sana uchun ma'lumotlar mavjud emas")
     else:
@@ -1034,7 +1080,7 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
         else:
             st.info("Ma'lumotlar mavjud emas")
 except Exception:
@@ -1141,7 +1187,7 @@ if len(mg_date_range) == 2:
                 .encode(x="SANA:T", y="OYINLAR:Q")
             )
 
-            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), use_container_width=True)
+            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), width='stretch')
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
     except Exception:
@@ -1207,7 +1253,7 @@ try:
             )
             .properties(height=290, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
         )
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width='stretch')
     else:
         st.info("Ma'lumotlar mavjud emas")
 except Exception:
