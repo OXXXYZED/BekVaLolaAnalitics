@@ -384,7 +384,7 @@ div[aria-label="Calendar"] {{
 /* ---------- KPI ---------- */
 .kpi-grid {{
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin-bottom: 14px;
 }}
@@ -411,6 +411,8 @@ div[aria-label="Calendar"] {{
 .kpi-ico.purple {{ background: rgba(124,58,237,0.10); color:#7C3AED; }}
 .kpi-ico.orange {{ background: rgba(245,158,11,0.12); color:#F59E0B; }}
 .kpi-ico.green {{ background: rgba(22,163,74,0.10); color:#16A34A; }}
+.kpi-ico.blue {{ background: rgba(59,130,246,0.12); color:#3B82F6; }}
+.kpi-ico.purple {{ background: rgba(139,92,246,0.12); color:#8B5CF6; }}
 
 .kpi-label {{
   font-size: 0.95rem;
@@ -705,6 +707,33 @@ try:
 except Exception:
     kpi_sessions = None
 
+# DAU - Daily Active Users (yesterday, as today may be incomplete)
+try:
+    yesterday = datetime.now() - timedelta(days=1)
+    dau_df = run_query(f"""
+        SELECT COUNT(DISTINCT USER_ID) as DAU
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE = '{yesterday.strftime("%Y-%m-%d")}'
+    """)
+    kpi_dau = int(dau_df["DAU"][0])
+except Exception:
+    kpi_dau = None
+
+# MAU - Monthly Active Users (last 30 days)
+try:
+    mau_end = datetime.now()
+    mau_start = mau_end - timedelta(days=30)
+    mau_df = run_query(f"""
+        SELECT COUNT(DISTINCT USER_ID) as MAU
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE BETWEEN '{mau_start.strftime("%Y-%m-%d")}' AND '{mau_end.strftime("%Y-%m-%d")}'
+    """)
+    kpi_mau = int(mau_df["MAU"][0])
+except Exception:
+    kpi_mau = None
+
 st.markdown(
     f"""
 <div class="kpi-grid">
@@ -722,6 +751,22 @@ st.markdown(
       <div class="kpi-label">Yangi foydalanuvchilar</div>
     </div>
     <div class="kpi-value">{f"{kpi_new_users:,}" if kpi_new_users is not None else "N/A"}</div>
+  </div>
+
+  <div class="kpi card">
+    <div class="kpi-head">
+      <div class="kpi-ico blue">📊</div>
+      <div class="kpi-label">DAU</div>
+    </div>
+    <div class="kpi-value">{f"{kpi_dau:,}" if kpi_dau is not None else "N/A"}</div>
+  </div>
+
+  <div class="kpi card">
+    <div class="kpi-head">
+      <div class="kpi-ico purple">📅</div>
+      <div class="kpi-label">MAU</div>
+    </div>
+    <div class="kpi-value">{f"{kpi_mau:,}" if kpi_mau is not None else "N/A"}</div>
   </div>
 
   <div class="kpi card">
