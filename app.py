@@ -75,7 +75,7 @@ def _clean_light_theme():
     }
 
 alt.themes.register("clean_light", _clean_light_theme)
-alt.themes.enable("clean_light")
+alt.theme.enable("clean_light")
 
 
 # ----------------------------
@@ -626,6 +626,7 @@ def get_connection():
         schema=st.secrets["snowflake"]["schema"],
     )
 
+@st.cache_data(ttl=300)
 def run_query(query: str) -> pd.DataFrame:
     conn = get_connection()
     cur = conn.cursor()
@@ -803,7 +804,7 @@ try:
                 )
                 .properties(height=CHART_H, padding={"top": 6, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(donut, use_container_width=True)
+            st.altair_chart(donut, width='stretch')
 
         with c_nums:
             # Build legend HTML as single block
@@ -922,7 +923,7 @@ if len(date_range) == 2:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
     except Exception:
@@ -990,7 +991,7 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
         else:
             st.info("Tanlangan sana uchun ma'lumotlar mavjud emas")
     else:
@@ -1034,7 +1035,7 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
         else:
             st.info("Ma'lumotlar mavjud emas")
 except Exception:
@@ -1141,7 +1142,7 @@ if len(mg_date_range) == 2:
                 .encode(x="SANA:T", y="OYINLAR:Q")
             )
 
-            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), use_container_width=True)
+            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), width='stretch')
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
     except Exception:
@@ -1207,7 +1208,7 @@ try:
             )
             .properties(height=290, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
         )
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width='stretch')
     else:
         st.info("Ma'lumotlar mavjud emas")
 except Exception:
