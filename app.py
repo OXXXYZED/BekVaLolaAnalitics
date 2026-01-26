@@ -86,10 +86,58 @@ st.markdown(
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* Force light color scheme globally - override system dark mode */
+:root,
+:root[data-theme="dark"],
+:root[data-theme="light"] {{
+  color-scheme: light only !important;
+  --primary-color: #2563EB !important;
+}}
+
 html, body, [class*="css"] {{
   font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif !important;
   color: {COLORS["text"]} !important;
   font-weight: 400 !important;
+  color-scheme: light !important;
+}}
+
+/* Override dark mode preference */
+@media (prefers-color-scheme: dark) {{
+  :root {{
+    color-scheme: light only !important;
+  }}
+
+  html, body, .stApp, [class*="css"] {{
+    background: {COLORS["bg"]} !important;
+    color: {COLORS["text"]} !important;
+  }}
+
+  /* Force light on all BaseWeb portals/popovers in dark mode */
+  [data-baseweb="popover"],
+  [data-baseweb="popover"] *,
+  [data-baseweb="menu"],
+  [data-baseweb="menu"] *,
+  [data-baseweb="calendar"],
+  [data-baseweb="calendar"] *,
+  [data-baseweb="layer"],
+  [data-baseweb="layer"] *,
+  div[data-floating-ui-portal],
+  div[data-floating-ui-portal] * {{
+    color-scheme: light !important;
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+  }}
+
+  /* Reset specific elements that should be transparent */
+  [data-baseweb="calendar"] td,
+  [data-baseweb="calendar"] button {{
+    background-color: transparent !important;
+  }}
+
+  [data-baseweb="calendar"] button[aria-selected="true"] {{
+    background-color: #2563EB !important;
+    color: #FFFFFF !important;
+  }}
 }}
 
 .stApp {{
@@ -117,9 +165,36 @@ html, body, [class*="css"] {{
   display: none !important;
 }}
 
+/* ===== GLOBAL PORTAL/LAYER OVERRIDE FOR LIGHT THEME ===== */
+/* BaseWeb uses layers for popovers, modals, etc. */
+[data-baseweb="layer"],
+[data-baseweb="layer"] > div,
+body > div[data-baseweb="layer"],
+body > div > [data-baseweb="popover"],
+body > div > [data-baseweb="menu"] {{
+  color-scheme: light !important;
+}}
+
+/* Floating UI portal (used by newer Streamlit versions) */
+div[data-floating-ui-portal],
+div[data-floating-ui-portal] > div {{
+  color-scheme: light !important;
+}}
+
 /* ===============================
-   FIX 1: SELECT DROPDOWNS - Make text visible
+   FIX 1: SELECT DROPDOWNS - Force light theme
    =============================== */
+
+/* Force light color scheme on all select components */
+[data-baseweb="select"],
+[data-baseweb="select"] *,
+[data-baseweb="popover"],
+[data-baseweb="popover"] *,
+[data-baseweb="menu"],
+[data-baseweb="menu"] * {{
+  color-scheme: light !important;
+}}
+
 [data-baseweb="select"] > div {{
   background-color: #FFFFFF !important;
   border: 1px solid rgba(15,23,42,0.18) !important;
@@ -135,6 +210,7 @@ html, body, [class*="css"] {{
 [data-baseweb="select"] input {{
   color: #0F172A !important;
   -webkit-text-fill-color: #0F172A !important;
+  background: transparent !important;
 }}
 
 /* Selected value text */
@@ -160,41 +236,87 @@ html, body, [class*="css"] {{
   box-shadow: 0 0 0 3px rgba(37,99,235,0.14) !important;
 }}
 
-/* Dropdown menu */
-ul[role="listbox"] {{
+/* ===== DROPDOWN MENU POPOVER - AGGRESSIVE LIGHT THEME ===== */
+[data-baseweb="popover"],
+[data-baseweb="popover"] > div,
+[data-baseweb="popover"] > div > div,
+[data-baseweb="menu"],
+[data-baseweb="menu"] > div {{
   background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
   border: 1px solid rgba(15,23,42,0.14) !important;
   border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
 }}
-ul[role="listbox"] li {{
+
+/* BaseWeb menu list */
+[data-baseweb="menu"] ul,
+[data-baseweb="popover"] ul {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+}}
+
+ul[role="listbox"],
+[data-baseweb="menu"] ul[role="listbox"] {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+  border: none !important;
+  border-radius: 12px !important;
+}}
+
+ul[role="listbox"] li,
+[data-baseweb="menu"] li,
+[data-baseweb="menu"] ul li {{
   color: #0F172A !important;
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
 }}
-ul[role="listbox"] li:hover {{
+
+ul[role="listbox"] li:hover,
+[data-baseweb="menu"] li:hover {{
   background: rgba(37,99,235,0.08) !important;
+  background-color: rgba(37,99,235,0.08) !important;
 }}
 
 /* ✅ Fix: selected / highlighted option background (remove black strip) */
 ul[role="listbox"] li[aria-selected="true"],
-div[role="option"][aria-selected="true"]{{
+div[role="option"][aria-selected="true"],
+[data-baseweb="menu"] li[aria-selected="true"] {{
   background: rgba(37,99,235,0.10) !important;
+  background-color: rgba(37,99,235,0.10) !important;
   color: #0F172A !important;
 }}
 ul[role="listbox"] li[aria-selected="true"] *,
-div[role="option"][aria-selected="true"] *{{
+div[role="option"][aria-selected="true"] *,
+[data-baseweb="menu"] li[aria-selected="true"] * {{
   color: #0F172A !important;
 }}
 
 /* highlighted item while moving with mouse/keyboard */
 ul[role="listbox"] li[data-highlighted="true"],
-div[role="option"][data-highlighted="true"]{{
+div[role="option"][data-highlighted="true"],
+[data-baseweb="menu"] li[data-highlighted="true"],
+ul[role="listbox"] li:focus,
+[data-baseweb="menu"] li:focus {{
   background: rgba(37,99,235,0.08) !important;
+  background-color: rgba(37,99,235,0.08) !important;
   color: #0F172A !important;
 }}
 
 
 /* ===============================
-   FIX 2: DATEPICKER - Calendar stays dark with white numbers
+   FIX 2: DATEPICKER - Force light theme
    =============================== */
+
+/* Force light color scheme on datepicker */
+[data-baseweb="datepicker"],
+[data-baseweb="datepicker"] *,
+[data-baseweb="calendar"],
+[data-baseweb="calendar"] *,
+.stDateInput,
+.stDateInput * {{
+  color-scheme: light !important;
+}}
 
 /* Date input field */
 [data-baseweb="datepicker"] > div,
@@ -205,7 +327,7 @@ div[role="option"][data-highlighted="true"]{{
   box-shadow: none !important;
 }}
 
-/* Date input text - BLACK when selected */
+/* Date input text */
 [data-baseweb="datepicker"] input,
 .stDateInput input {{
   color: #0F172A !important;
@@ -228,93 +350,122 @@ div[role="option"][data-highlighted="true"]{{
   box-shadow: 0 0 0 3px rgba(37,99,235,0.14) !important;
 }}
 
-/* ========= CALENDAR POPUP - DARK BACKGROUND, WHITE TEXT ========= */
+/* ========= CALENDAR POPUP - NUCLEAR LIGHT THEME ========= */
 
-/* Calendar popup container - DARK */
-[data-baseweb="calendar"],
-div[role="dialog"],
-div[aria-label="Calendar"] {{
-  background: #1E293B !important;
-  color: #FFFFFF !important;
-  border: 1px solid rgba(255,255,255,0.1) !important;
-  border-radius: 14px !important;
-  box-shadow: 0 12px 28px rgba(0,0,0,0.3) !important;
-}}
-
-/* Calendar header - DARK */
-[data-baseweb="calendar"] header {{
-  background: #1E293B !important;
-  color: #FFFFFF !important;
-}}
-
-/* Month/Year dropdowns in header - DARK */
-[data-baseweb="calendar"] [data-baseweb="select"] > div {{
-  background: #334155 !important;
-  border-color: rgba(255,255,255,0.1) !important;
-}}
-
-[data-baseweb="calendar"] [data-baseweb="select"] * {{
-  color: #FFFFFF !important;
-}}
-
-/* Navigation arrows - WHITE */
-[data-baseweb="calendar"] button[aria-label*="previous"],
-[data-baseweb="calendar"] button[aria-label*="next"] {{
-  color: #FFFFFF !important;
-}}
-
-[data-baseweb="calendar"] button svg {{
-  color: #FFFFFF !important;
-  fill: #FFFFFF !important;
-}}
-
-/* Weekday labels - WHITE */
-[data-baseweb="calendar"] [role="row"] span,
-[data-baseweb="calendar"] th {{
-  color: #94A3B8 !important;
-  font-weight: 500 !important;
-}}
-
-/* Day numbers - WHITE */
-[data-baseweb="calendar"] td button,
-[data-baseweb="calendar"] [role="button"] {{
+/* RESET: Force ALL elements in calendar to have transparent/white background */
+[data-baseweb="calendar"] *:not([aria-selected="true"]) {{
   background: transparent !important;
-  color: #FFFFFF !important;
-  font-weight: 500 !important;
+  background-color: transparent !important;
 }}
 
-/* Hover state - lighter background */
-[data-baseweb="calendar"] td button:hover,
-[data-baseweb="calendar"] [role="button"]:hover {{
-  background: rgba(255,255,255,0.1) !important;
-  color: #FFFFFF !important;
-}}
-
-/* Selected day - BLUE with WHITE text */
-[data-baseweb="calendar"] td button[aria-selected="true"],
-[data-baseweb="calendar"] [role="button"][aria-selected="true"] {{
-  background: #2563EB !important;
-  color: #FFFFFF !important;
-  border-radius: 999px !important;
-}}
-
-/* Today's date - outlined */
-[data-baseweb="calendar"] td button[aria-label*="today"],
-[data-baseweb="calendar"] [role="button"][aria-current="date"] {{
-  border: 2px solid #3B82F6 !important;
-  color: #FFFFFF !important;
-}}
-
-/* Disabled days - gray */
-[data-baseweb="calendar"] td button:disabled,
-[data-baseweb="calendar"] [role="button"]:disabled {{
-  color: #475569 !important;
-  opacity: 0.5 !important;
-}}
-
-/* Date range display - BLACK */
-.stDateInput [data-testid="stMarkdownContainer"] {{
+/* Calendar container - white background */
+[data-baseweb="calendar"] {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
   color: #0F172A !important;
+  border: 1px solid rgba(15,23,42,0.14) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12) !important;
+}}
+
+[data-baseweb="calendar"] > div {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+}}
+
+/* All text in calendar - dark */
+[data-baseweb="calendar"] * {{
+  color: #0F172A !important;
+}}
+
+/* Month/Year dropdowns */
+[data-baseweb="calendar"] [data-baseweb="select"] > div {{
+  background: #F8FAFC !important;
+  background-color: #F8FAFC !important;
+}}
+
+/* Navigation arrows */
+[data-baseweb="calendar"] button svg,
+[data-baseweb="calendar"] svg {{
+  color: #0F172A !important;
+  fill: #0F172A !important;
+}}
+
+/* Weekday labels - gray */
+[data-baseweb="calendar"] th,
+[data-baseweb="calendar"] [role="columnheader"] {{
+  color: #64748B !important;
+}}
+
+/* Hover on buttons */
+[data-baseweb="calendar"] button:hover {{
+  background: rgba(37,99,235,0.08) !important;
+  background-color: rgba(37,99,235,0.08) !important;
+}}
+
+/* ===== SELECTED DATE - BLUE ===== */
+[data-baseweb="calendar"] [aria-selected="true"],
+[data-baseweb="calendar"] [aria-selected="true"] > *,
+[data-baseweb="calendar"] button[aria-selected="true"],
+[data-baseweb="calendar"] td[aria-selected="true"],
+[data-baseweb="calendar"] td[aria-selected="true"] button {{
+  background: #2563EB !important;
+  background-color: #2563EB !important;
+  color: #FFFFFF !important;
+  border-radius: 50% !important;
+}}
+
+/* Text inside selected - white */
+[data-baseweb="calendar"] [aria-selected="true"] *,
+[data-baseweb="calendar"] button[aria-selected="true"] *,
+[data-baseweb="calendar"] td[aria-selected="true"] * {{
+  color: #FFFFFF !important;
+}}
+
+/* Today's date - blue border */
+[data-baseweb="calendar"] [aria-current="date"]:not([aria-selected="true"]) {{
+  border: 2px solid #2563EB !important;
+  border-radius: 50% !important;
+}}
+
+/* Disabled/outside month days */
+[data-baseweb="calendar"] button:disabled {{
+  color: #CBD5E1 !important;
+  opacity: 0.4 !important;
+}}
+
+/* Range highlight */
+[data-baseweb="calendar"] [data-highlighted="true"]:not([aria-selected="true"]) {{
+  background: rgba(37,99,235,0.1) !important;
+  background-color: rgba(37,99,235,0.1) !important;
+}}
+
+/* Pseudo-elements reset */
+[data-baseweb="calendar"] *::before,
+[data-baseweb="calendar"] *::after {{
+  background: transparent !important;
+  background-color: transparent !important;
+}}
+
+/* Range between dates */
+[data-baseweb="calendar"] td[data-in-range="true"]::before,
+[data-baseweb="calendar"] [data-in-range="true"] {{
+  background: rgba(37,99,235,0.1) !important;
+  background-color: rgba(37,99,235,0.1) !important;
+}}
+
+/* Quick select dropdown at bottom */
+[data-baseweb="calendar"] + div,
+[data-baseweb="calendar"] ~ div {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+}}
+
+[data-baseweb="calendar"] + div [data-baseweb="select"] > div,
+[data-baseweb="calendar"] ~ div [data-baseweb="select"] > div {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+  border: 1px solid rgba(15,23,42,0.18) !important;
 }}
 
 /* ===============================
