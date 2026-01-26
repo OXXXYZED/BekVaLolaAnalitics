@@ -756,7 +756,7 @@ st.markdown(
   <div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico blue">📊</div>
-      <div class="kpi-label">DAU</div>
+      <div class="kpi-label">Kunlik faol foydalanuvchilar</div>
     </div>
     <div class="kpi-value">{f"{kpi_dau:,}" if kpi_dau is not None else "N/A"}</div>
   </div>
@@ -764,7 +764,7 @@ st.markdown(
   <div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico purple">📅</div>
-      <div class="kpi-label">MAU</div>
+      <div class="kpi-label">Oylik faol foydalanuvchilar</div>
     </div>
     <div class="kpi-value">{f"{kpi_mau:,}" if kpi_mau is not None else "N/A"}</div>
   </div>
@@ -849,7 +849,7 @@ try:
                 )
                 .properties(height=CHART_H, padding={"top": 6, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(donut, width='stretch')
+            st.altair_chart(donut, use_container_width=True)
 
         with c_nums:
             # Build legend HTML as single block
@@ -884,8 +884,8 @@ try:
 
     else:
         st.info("Ma'lumotlar mavjud emas")
-except Exception:
-    st.info("Ma'lumotlar mavjud emas")
+except Exception as e:
+    st.error(f"Platformalar xatolik: {e}")
 
 
 # ----------------------------
@@ -968,11 +968,11 @@ if len(date_range) == 2:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, width='stretch')
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
-    except Exception:
-        st.info("Ma'lumotlarni yuklashda xatolik")
+    except Exception as e:
+        st.error(f"Yangi foydalanuvchilar xatolik: {e}")
 
 
 # ----------------------------
@@ -1036,7 +1036,7 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, width='stretch')
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Tanlangan sana uchun ma'lumotlar mavjud emas")
     else:
@@ -1080,11 +1080,11 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, width='stretch')
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Ma'lumotlar mavjud emas")
-except Exception:
-    st.info("Ma'lumotlarni yuklashda xatolik")
+except Exception as e:
+    st.error(f"Sessiyalar xatolik: {e}")
 
 
 # ----------------------------
@@ -1187,11 +1187,11 @@ if len(mg_date_range) == 2:
                 .encode(x="SANA:T", y="OYINLAR:Q")
             )
 
-            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), width='stretch')
+            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), use_container_width=True)
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
-    except Exception:
-        st.info("Ma'lumotlarni yuklashda xatolik")
+    except Exception as e:
+        st.error(f"Mini oyinlar trendi xatolik: {e}")
 
 
 # ----------------------------
@@ -1253,11 +1253,11 @@ try:
             )
             .properties(height=290, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
         )
-        st.altair_chart(chart, width='stretch')
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.info("Ma'lumotlar mavjud emas")
-except Exception:
-    st.info("Ma'lumotlarni yuklashda xatolik")
+except Exception as e:
+    st.error(f"TOP 5 mini o'yin xatolik: {e}")
 
 
 # ----------------------------
