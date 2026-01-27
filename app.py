@@ -1239,7 +1239,145 @@ except Exception as e:
 
 
 # ----------------------------
-# 4) Mini-game trend
+# 4) DAU Trend
+# ----------------------------
+left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
+with left:
+    st.markdown('<div class="sec-title">📊 Kunlik faol foydalanuvchilar (DAU)</div><div class="sec-sub">Har kungi unikal foydalanuvchilar soni</div>', unsafe_allow_html=True)
+with right:
+    dau_period = st.selectbox(
+        "Davr",
+        ["So'nggi 7 kun", "So'nggi 14 kun", "So'nggi 30 kun", "So'nggi 90 kun"],
+        key="dau_period",
+    )
+
+try:
+    dau_days_map = {"So'nggi 7 kun": 7, "So'nggi 14 kun": 14, "So'nggi 30 kun": 30, "So'nggi 90 kun": 90}
+    dau_days = dau_days_map[dau_period]
+    dau_end = datetime.now()
+    dau_start = dau_end - timedelta(days=dau_days)
+
+    dau_trend_df = run_query(f"""
+        SELECT
+            EVENT_DATE as SANA,
+            COUNT(DISTINCT USER_ID) as DAU
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE BETWEEN '{dau_start.strftime("%Y-%m-%d")}' AND '{dau_end.strftime("%Y-%m-%d")}'
+        GROUP BY EVENT_DATE
+        ORDER BY EVENT_DATE
+    """)
+
+    if not dau_trend_df.empty:
+        dau_trend_df["SANA"] = pd.to_datetime(dau_trend_df["SANA"])
+        dau_trend_df["SANA_STR"] = dau_trend_df["SANA"].dt.strftime("%Y-%m-%d")
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("O'rtacha DAU", f"{int(dau_trend_df['DAU'].mean()):,}")
+        m2.metric("Eng yuqori", f"{int(dau_trend_df['DAU'].max()):,}")
+        m3.metric("Eng past", f"{int(dau_trend_df['DAU'].min()):,}")
+
+        # Area chart for DAU
+        dau_area = (
+            alt.Chart(dau_trend_df)
+            .mark_area(
+                color=COLORS["sessions"],
+                opacity=0.2,
+                line=False
+            )
+            .encode(
+                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10)),
+                y=alt.Y("DAU:Q", title=""),
+            )
+        )
+
+        dau_line = (
+            alt.Chart(dau_trend_df)
+            .mark_line(color=COLORS["sessions"], strokeWidth=2.6, opacity=0.9)
+            .encode(
+                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10)),
+                y=alt.Y("DAU:Q", title=""),
+                tooltip=[
+                    alt.Tooltip("SANA:T", title="Sana", format="%Y-%m-%d"),
+                    alt.Tooltip("DAU:Q", title="DAU", format=","),
+                ],
+            )
+        )
+
+        dau_points = (
+            alt.Chart(dau_trend_df)
+            .mark_circle(size=60, color=COLORS["sessions"], opacity=0.85)
+            .encode(x="SANA:T", y="DAU:Q")
+        )
+
+        st.altair_chart((dau_area + dau_line + dau_points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), use_container_width=True)
+    else:
+        st.info("Ma'lumotlar mavjud emas")
+except Exception as e:
+    st.error(f"DAU trend xatolik: {e}")
+
+
+# ----------------------------
+# 5) MAU Trend
+# ----------------------------
+left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
+with left:
+    st.markdown('<div class="sec-title">📅 Oylik faol foydalanuvchilar (MAU)</div><div class="sec-sub">Har oylik unikal foydalanuvchilar soni</div>', unsafe_allow_html=True)
+with right:
+    mau_period = st.selectbox(
+        "Davr",
+        ["So'nggi 6 oy", "So'nggi 12 oy"],
+        key="mau_period",
+    )
+
+try:
+    mau_months_map = {"So'nggi 6 oy": 6, "So'nggi 12 oy": 12}
+    mau_months = mau_months_map[mau_period]
+    mau_end = datetime.now()
+    mau_start = mau_end - timedelta(days=mau_months * 30)
+
+    mau_trend_df = run_query(f"""
+        SELECT
+            DATE_TRUNC('month', EVENT_DATE) as OY,
+            COUNT(DISTINCT USER_ID) as MAU
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE BETWEEN '{mau_start.strftime("%Y-%m-%d")}' AND '{mau_end.strftime("%Y-%m-%d")}'
+        GROUP BY DATE_TRUNC('month', EVENT_DATE)
+        ORDER BY OY
+    """)
+
+    if not mau_trend_df.empty:
+        mau_trend_df["OY"] = pd.to_datetime(mau_trend_df["OY"])
+        mau_trend_df["OY_STR"] = mau_trend_df["OY"].dt.strftime("%Y-%m")
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("O'rtacha MAU", f"{int(mau_trend_df['MAU'].mean()):,}")
+        m2.metric("Eng yuqori", f"{int(mau_trend_df['MAU'].max()):,}")
+        m3.metric("Oxirgi oy", f"{int(mau_trend_df['MAU'].iloc[-1]):,}")
+
+        mau_chart = (
+            alt.Chart(mau_trend_df)
+            .mark_bar(color=COLORS["purple"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6, opacity=0.92)
+            .encode(
+                x=alt.X("OY_STR:O", title="", axis=alt.Axis(labelAngle=-30), sort=None),
+                y=alt.Y("MAU:Q", title=""),
+                tooltip=[
+                    alt.Tooltip("OY_STR:O", title="Oy"),
+                    alt.Tooltip("MAU:Q", title="MAU", format=","),
+                ],
+            )
+            .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
+        )
+        st.altair_chart(mau_chart, use_container_width=True)
+    else:
+        st.info("Ma'lumotlar mavjud emas")
+except Exception as e:
+    st.error(f"MAU trend xatolik: {e}")
+
+
+# ----------------------------
+# 6) Mini-game trend
 # ----------------------------
 left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
 with left:
@@ -1346,7 +1484,7 @@ if len(mg_date_range) == 2:
 
 
 # ----------------------------
-# 5) Top 5 mini-games
+# 7) Top 5 mini-games
 # ----------------------------
 st.markdown(
     """
@@ -1412,7 +1550,7 @@ except Exception as e:
 
 
 # ----------------------------
-# 6) Retention
+# 8) Retention
 # ----------------------------
 st.markdown(
     """
