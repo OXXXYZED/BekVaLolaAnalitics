@@ -55,27 +55,23 @@ LOGO_BASE64 = get_logo_base64()
 # ----------------------------
 # Altair clean light theme (transparent background; Streamlit card shows bg)
 # ----------------------------
+@alt.theme.register("clean_light", enable=True)
 def _clean_light_theme():
-    return {
-        "config": {
-            "background": "transparent",
-            "view": {"stroke": "transparent"},
-            "axis": {
-                "labelColor": COLORS["muted"],
-                "titleColor": COLORS["muted"],
-                "gridColor": "rgba(15,23,42,0.06)",
-                "domainColor": "rgba(15,23,42,0.18)",
-                "tickColor": "rgba(15,23,42,0.18)",
-                "labelFontSize": 11,
-                "titleFontSize": 11,
-            },
-            "legend": {"labelColor": COLORS["muted"], "titleColor": COLORS["muted"]},
-            "title": {"color": COLORS["text"]},
-        }
-    }
-
-alt.themes.register("clean_light", _clean_light_theme)
-alt.theme.enable("clean_light")
+    return alt.theme.ThemeConfig({
+        "background": "transparent",
+        "view": {"stroke": "transparent"},
+        "axis": {
+            "labelColor": COLORS["muted"],
+            "titleColor": COLORS["muted"],
+            "gridColor": "rgba(15,23,42,0.06)",
+            "domainColor": "rgba(15,23,42,0.18)",
+            "tickColor": "rgba(15,23,42,0.18)",
+            "labelFontSize": 11,
+            "titleFontSize": 11,
+        },
+        "legend": {"labelColor": COLORS["muted"], "titleColor": COLORS["muted"]},
+        "title": {"color": COLORS["text"]},
+    })
 
 
 # ----------------------------
@@ -766,9 +762,9 @@ def get_minigame_name(name):
     return MINIGAME_NAMES.get(name, name)
 
 # ----------------------------
-# Snowflake (logic unchanged)
+# Snowflake connection with auto-reconnect
 # ----------------------------
-@st.cache_resource
+@st.cache_resource(ttl=2700)  # 45 minutes TTL (Snowflake tokens expire after ~1 hour)
 def get_connection():
     return snowflake.connector.connect(
         user=st.secrets["snowflake"]["user"],
@@ -779,8 +775,8 @@ def get_connection():
         schema=st.secrets["snowflake"]["schema"],
     )
 
-@st.cache_data(ttl=300)
-def run_query(query: str) -> pd.DataFrame:
+def _execute_query(query: str) -> pd.DataFrame:
+    """Execute query and return DataFrame."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(query)
@@ -799,6 +795,18 @@ def run_query(query: str) -> pd.DataFrame:
             except Exception:
                 pass
     return df
+
+@st.cache_data(ttl=300)
+def run_query(query: str) -> pd.DataFrame:
+    try:
+        return _execute_query(query)
+    except snowflake.connector.errors.ProgrammingError as e:
+        # Check if token expired (error code 390114)
+        if "390114" in str(e) or "Authentication token has expired" in str(e):
+            # Clear cached connection and retry
+            get_connection.clear()
+            return _execute_query(query)
+        raise
 
 GAME_ID = 181330318
 DB = "UNITY_ANALYTICS_GCP_US_CENTRAL1_UNITY_ANALYTICS_PDA.SHARES"
@@ -1000,7 +1008,7 @@ try:
                 )
                 .properties(height=CHART_H, padding={"top": 6, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(donut, use_container_width=True)
+            st.altair_chart(donut, width="stretch")
 
         with c_nums:
             # Build legend HTML as single block
@@ -1119,7 +1127,7 @@ if len(date_range) == 2:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width="stretch")
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
     except Exception as e:
@@ -1187,7 +1195,7 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width="stretch")
         else:
             st.info("Tanlangan sana uchun ma'lumotlar mavjud emas")
     else:
@@ -1231,7 +1239,7 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width="stretch")
         else:
             st.info("Ma'lumotlar mavjud emas")
 except Exception as e:
@@ -1310,7 +1318,7 @@ try:
             .encode(x="SANA:T", y="DAU:Q")
         )
 
-        st.altair_chart((dau_area + dau_line + dau_points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), use_container_width=True)
+        st.altair_chart((dau_area + dau_line + dau_points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), width="stretch")
     else:
         st.info("Ma'lumotlar mavjud emas")
 except Exception as e:
@@ -1369,7 +1377,7 @@ try:
             )
             .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
         )
-        st.altair_chart(mau_chart, use_container_width=True)
+        st.altair_chart(mau_chart, width="stretch")
     else:
         st.info("Ma'lumotlar mavjud emas")
 except Exception as e:
@@ -1476,7 +1484,7 @@ if len(mg_date_range) == 2:
                 .encode(x="SANA:T", y="OYINLAR:Q")
             )
 
-            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), use_container_width=True)
+            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), width="stretch")
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
     except Exception as e:
@@ -1542,7 +1550,7 @@ try:
             )
             .properties(height=290, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
         )
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width="stretch")
     else:
         st.info("Ma'lumotlar mavjud emas")
 except Exception as e:
