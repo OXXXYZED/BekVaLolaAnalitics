@@ -853,7 +853,7 @@ DB = "UNITY_ANALYTICS_GCP_US_CENTRAL1_UNITY_ANALYTICS_PDA.SHARES"
 
 
 # Get current timestamp for last update
-last_update = datetime.now().strftime("%d.%m.%Y • %H:%M")
+last_update = '15.01.2025'
 
 st.markdown(f'''
 <div class="header">
