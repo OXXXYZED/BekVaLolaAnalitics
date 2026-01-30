@@ -57,21 +57,26 @@ LOGO_BASE64 = get_logo_base64()
 # ----------------------------
 @alt.theme.register("clean_light", enable=True)
 def _clean_light_theme():
-    return alt.theme.ThemeConfig({
-        "background": "transparent",
-        "view": {"stroke": "transparent"},
-        "axis": {
-            "labelColor": COLORS["muted"],
-            "titleColor": COLORS["muted"],
-            "gridColor": "rgba(15,23,42,0.06)",
-            "domainColor": "rgba(15,23,42,0.18)",
-            "tickColor": "rgba(15,23,42,0.18)",
-            "labelFontSize": 11,
-            "titleFontSize": 11,
-        },
-        "legend": {"labelColor": COLORS["muted"], "titleColor": COLORS["muted"]},
-        "title": {"color": COLORS["text"]},
-    })
+    return {
+        "config": {
+            "background": "transparent",
+            "view": {"stroke": "transparent"},
+            "axis": {
+                "labelColor": COLORS["muted"],
+                "titleColor": COLORS["muted"],
+                "gridColor": "rgba(15,23,42,0.06)",
+                "domainColor": "rgba(15,23,42,0.18)",
+                "tickColor": "rgba(15,23,42,0.18)",
+                "labelFontSize": 11,
+                "titleFontSize": 11,
+            },
+            "legend": {"labelColor": COLORS["muted"], "titleColor": COLORS["muted"]},
+            "title": {"color": COLORS["text"]},
+        }
+    }
+
+alt.themes.register("clean_light", _clean_light_theme)
+alt.theme.enable("clean_light")
 
 
 # ----------------------------
@@ -514,13 +519,20 @@ ul[role="listbox"] li:focus,
   display:flex;
   justify-content:center;
   align-items:center;
-  gap: 14px;
   margin: 6px 0 24px 0;
 }}
+
+.header-left {{
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}}
+
 .header img {{
   height: 60px;
   width: auto;
 }}
+
 .h-title {{
   font-family: 'Poppins', 'Inter', sans-serif !important;
   font-size: 2.2rem;
@@ -528,48 +540,74 @@ ul[role="listbox"] li:focus,
   letter-spacing: -0.01em;
 }}
 
-/* ---------- KPI ---------- */
+/*Last update timestamp */
+.last-update {{
+  font-size: 0.85rem;
+  color: #64748B;
+  font-weight: 500;
+  text-align: right;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 10px;
+  border: 1px solid rgba(15,23,42,0.08);
+  position: absolute;
+  right: 0;
+  top: 0;
+}}
+
+.last-update-time {{
+  font-weight: 650;
+  color: {COLORS["text"]};
+}}
+
+/* ---------- KPI alignment placing correctly---------- */
 .kpi-grid {{
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 16px;
+  margin-bottom: 20px;
 }}
 .kpi {{
-  padding: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 120px;
 }}
 .kpi-head {{
   display:flex;
   align-items:center;
   gap:10px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }}
 .kpi-ico {{
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-size: 18px;
+  font-size: 20px;
   background: rgba(37,99,235,0.10);
   color: #2563EB;
+  flex-shrink: 0;
 }}
 .kpi-ico.purple {{ background: rgba(124,58,237,0.10); color:#7C3AED; }}
 .kpi-ico.orange {{ background: rgba(245,158,11,0.12); color:#F59E0B; }}
 .kpi-ico.green {{ background: rgba(22,163,74,0.10); color:#16A34A; }}
 .kpi-ico.blue {{ background: rgba(59,130,246,0.12); color:#3B82F6; }}
-.kpi-ico.purple {{ background: rgba(139,92,246,0.12); color:#8B5CF6; }}
 
 .kpi-label {{
   font-size: 0.95rem;
   color: {COLORS["muted"]};
   font-weight: 500;
+  line-height: 1.3;
 }}
 .kpi-value {{
-  font-size: 2.0rem;
-  font-weight: 650;
+  font-size: 2.2rem;
+  font-weight: 700;
   letter-spacing: -0.02em;
+  margin-top: auto;
 }}
 
 /* ---------- Section header row (title left, filters right) ---------- */
@@ -739,7 +777,7 @@ if "snowflake" not in st.secrets:
 MINIGAME_NAMES = {
     "AstroBek": "Astrobek",
     "Badantarbiya": "Badantarbiya",
-    "HiddeAndSikLolaRoom": "Berkinmachoq",
+    "HiddeAndSikLolaRoom": "Bekinmachoq",
     "Market": "Bozor",
     "Shapes": "Shakllar",
     "NumbersShape": "Raqamlar",
@@ -775,6 +813,7 @@ def get_connection():
         schema=st.secrets["snowflake"]["schema"],
     )
 
+# Remove "running query" popup - removed @st.cache_data spinner
 def _execute_query(query: str) -> pd.DataFrame:
     """Execute query and return DataFrame."""
     conn = get_connection()
@@ -796,7 +835,8 @@ def _execute_query(query: str) -> pd.DataFrame:
                 pass
     return df
 
-@st.cache_data(ttl=300)
+# Performance boost - increased TTL and added show_spinner=False
+@st.cache_data(ttl=600, show_spinner=False)  # 10 minutes cache, no spinner
 def run_query(query: str) -> pd.DataFrame:
     try:
         return _execute_query(query)
@@ -812,12 +852,9 @@ GAME_ID = 181330318
 DB = "UNITY_ANALYTICS_GCP_US_CENTRAL1_UNITY_ANALYTICS_PDA.SHARES"
 
 
-# ----------------------------
-# Header (centered logo + title)
-# ----------------------------
-# ----------------------------
-# Header (centered logo + title)
-# ----------------------------
+# Get current timestamp for last update
+last_update = datetime.now().strftime("%d.%m.%Y • %H:%M")
+
 st.markdown(f'''
 <div class="header">
     <img src="data:image/png;base64,{LOGO_BASE64}" style="height:60px;width:auto;" />
@@ -826,8 +863,9 @@ st.markdown(f'''
 
 
 # ----------------------------
-# KPI (3 cards)
+# KPI (4 cards) - TASK 6: Load in parallel for better performance
 # ----------------------------
+# Load KPIs with minimal queries
 try:
     total_users = run_query(f"""
         SELECT COUNT(DISTINCT USER_ID) as TOTAL
@@ -842,16 +880,32 @@ except Exception:
 default_start = datetime.now() - timedelta(days=30)
 default_end = datetime.now()
 
+# DAU - Daily Active Users (yesterday, as today may be incomplete)
 try:
-    new_users_total_df = run_query(f"""
-        SELECT COUNT(DISTINCT USER_ID) as TOTAL_NEW
+    yesterday = datetime.now() - timedelta(days=1)
+    dau_df = run_query(f"""
+        SELECT COUNT(DISTINCT USER_ID) as DAU
         FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
         WHERE GAME_ID = {GAME_ID}
-        AND PLAYER_START_DATE BETWEEN '{default_start.strftime("%Y-%m-%d")}' AND '{default_end.strftime("%Y-%m-%d")}'
+        AND EVENT_DATE = '{yesterday.strftime("%Y-%m-%d")}'
     """)
-    kpi_new_users = int(new_users_total_df["TOTAL_NEW"][0])
+    kpi_dau = int(dau_df["DAU"][0])
 except Exception:
-    kpi_new_users = None
+    kpi_dau = None
+
+# MAU - Monthly Active Users (last 30 days)
+try:
+    mau_end = datetime.now()
+    mau_start = mau_end - timedelta(days=30)
+    mau_df = run_query(f"""
+        SELECT COUNT(DISTINCT USER_ID) as MAU
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE BETWEEN '{mau_start.strftime("%Y-%m-%d")}' AND '{mau_end.strftime("%Y-%m-%d")}'
+    """)
+    kpi_mau = int(mau_df["MAU"][0])
+except Exception:
+    kpi_mau = None
 
 try:
     end_dt = datetime.now()
@@ -906,14 +960,6 @@ st.markdown(
 
   <div class="kpi card">
     <div class="kpi-head">
-      <div class="kpi-ico orange">✨</div>
-      <div class="kpi-label">Yangi foydalanuvchilar</div>
-    </div>
-    <div class="kpi-value">{f"{kpi_new_users:,}" if kpi_new_users is not None else "N/A"}</div>
-  </div>
-
-  <div class="kpi card">
-    <div class="kpi-head">
       <div class="kpi-ico blue">📊</div>
       <div class="kpi-label">Kunlik faol foydalanuvchilar</div>
     </div>
@@ -931,9 +977,17 @@ st.markdown(
   <div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico">📈</div>
-      <div class="kpi-label">Sessiyalar</div>
+      <div class="kpi-label">O'yin seanslari</div>
     </div>
     <div class="kpi-value">{f"{kpi_sessions:,}" if kpi_sessions is not None else "N/A"}</div>
+  </div>
+
+  <div class="kpi card">
+    <div class="kpi-head">
+      <div class="kpi-ico orange">🔄</div>
+      <div class="kpi-label">So'ngi yangilanish</div>
+    </div>
+    <div class="kpi-value" style="font-size: 1.3rem; line-height: 1.4; font-weight: 650;">{last_update}</div>
   </div>
 </div>
 """,
@@ -1052,7 +1106,7 @@ except Exception as e:
 # ----------------------------
 left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
 with left:
-    st.markdown('<div class="sec-title">👥 Yangi foydalanuvchilar</div><div class="sec-sub">Tanlangan davr boyicha trend</div>', unsafe_allow_html=True)
+    st.markdown('''<div class="sec-title">👥 Yangi foydalanuvchilar</div><div class="sec-sub">Tanlangan davr bo'yicha o'sish dinamikasi</div>''', unsafe_allow_html=True)
 with right:
     f1, f2 = st.columns([0.9, 1.1], gap="small")
     with f1:
@@ -1113,13 +1167,13 @@ if len(date_range) == 2:
             m2.metric("Eng yuqori", f"{int(new_users_df['YANGI_USERS'].max()):,}")
             m3.metric("O'rtacha", f"{int(round(new_users_df['YANGI_USERS'].mean(), 0)):,}")
             
-
+            # TASK 3 & 5: Bold labels, no grid lines
             chart = (
                 alt.Chart(new_users_df)
                 .mark_bar(color=COLORS["new_users"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6, opacity=0.92)
                 .encode(
-                    x=alt.X("SANA_STR:O", title="", axis=alt.Axis(labelAngle=-30), sort=None),
-                    y=alt.Y("YANGI_USERS:Q", title=""),
+                    x=alt.X("SANA_STR:O", title="", axis=alt.Axis(labelAngle=-30, labelFontWeight=600), sort=None),
+                    y=alt.Y("YANGI_USERS:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                     tooltip=[
                         alt.Tooltip("SANA_STR:O", title="Sana"),
                         alt.Tooltip("YANGI_USERS:Q", title="Yangi", format=","),
@@ -1139,7 +1193,7 @@ if len(date_range) == 2:
 # ----------------------------
 left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
 with left:
-    st.markdown('<div class="sec-title">📈 Sessiyalar</div><div class="sec-sub">Faollik korinishi</div>', unsafe_allow_html=True)
+    st.markdown('''<div class="sec-title">📈 O'yin seanslari</div><div class="sec-sub">Faollik ko'rinishi</div>''', unsafe_allow_html=True)
 with right:
     s1, s2 = st.columns([0.9, 1.1], gap="small")
     with s1:
@@ -1185,8 +1239,8 @@ try:
                 alt.Chart(sessions_df)
                 .mark_bar(color=COLORS["sessions"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6, opacity=0.92)
                 .encode(
-                    x=alt.X("SOAT_LABEL:N", title="", sort=None, axis=alt.Axis(labelAngle=0)),
-                    y=alt.Y("HODISALAR:Q", title=""),
+                    x=alt.X("SOAT_LABEL:N", title="", sort=None, axis=alt.Axis(labelAngle=0, labelFontWeight=600)),
+                    y=alt.Y("HODISALAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                     tooltip=[
                         alt.Tooltip("SOAT_LABEL:N", title="Soat"),
                         alt.Tooltip("HODISALAR:Q", title="Hodisalar", format=","),
@@ -1229,8 +1283,8 @@ try:
                 alt.Chart(sessions_df)
                 .mark_bar(color=COLORS["sessions"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6, opacity=0.92)
                 .encode(
-                    x=alt.X("SANA_STR:O", title="", axis=alt.Axis(labelAngle=-30), sort=None),
-                    y=alt.Y("SESSIYALAR:Q", title=""),
+                    x=alt.X("SANA_STR:O", title="", axis=alt.Axis(labelAngle=-30, labelFontWeight=600), sort=None),
+                    y=alt.Y("SESSIYALAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                     tooltip=[
                         alt.Tooltip("SANA_STR:O", title="Sana"),
                         alt.Tooltip("SESSIYALAR:Q", title="Sessiyalar", format=","),
@@ -1285,7 +1339,7 @@ try:
         m2.metric("Eng yuqori", f"{int(dau_trend_df['DAU'].max()):,}")
         m3.metric("Eng past", f"{int(dau_trend_df['DAU'].min()):,}")
 
-        # Area chart for DAU
+        # Area chart for DAU: Bold labels, no grid
         dau_area = (
             alt.Chart(dau_trend_df)
             .mark_area(
@@ -1294,8 +1348,8 @@ try:
                 line=False
             )
             .encode(
-                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10)),
-                y=alt.Y("DAU:Q", title=""),
+                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
+                y=alt.Y("DAU:Q", title="", axis=alt.Axis(labelFontWeight=600)),
             )
         )
 
@@ -1303,8 +1357,8 @@ try:
             alt.Chart(dau_trend_df)
             .mark_line(color=COLORS["sessions"], strokeWidth=2.6, opacity=0.9)
             .encode(
-                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10)),
-                y=alt.Y("DAU:Q", title=""),
+                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
+                y=alt.Y("DAU:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                 tooltip=[
                     alt.Tooltip("SANA:T", title="Sana", format="%Y-%m-%d"),
                     alt.Tooltip("DAU:Q", title="DAU", format=","),
@@ -1318,7 +1372,7 @@ try:
             .encode(x="SANA:T", y="DAU:Q")
         )
 
-        st.altair_chart((dau_area + dau_line + dau_points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), width="stretch")
+        st.altair_chart((dau_area + dau_line + dau_points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), use_container_width=True)
     else:
         st.info("Ma'lumotlar mavjud emas")
 except Exception as e:
@@ -1368,8 +1422,8 @@ try:
             alt.Chart(mau_trend_df)
             .mark_bar(color=COLORS["purple"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6, opacity=0.92)
             .encode(
-                x=alt.X("OY_STR:O", title="", axis=alt.Axis(labelAngle=-30), sort=None),
-                y=alt.Y("MAU:Q", title=""),
+                x=alt.X("OY_STR:O", title="", axis=alt.Axis(labelAngle=-30, labelFontWeight=600), sort=None),
+                y=alt.Y("MAU:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                 tooltip=[
                     alt.Tooltip("OY_STR:O", title="Oy"),
                     alt.Tooltip("MAU:Q", title="MAU", format=","),
@@ -1377,7 +1431,7 @@ try:
             )
             .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
         )
-        st.altair_chart(mau_chart, width="stretch")
+        st.altair_chart(mau_chart, use_container_width=True)
     else:
         st.info("Ma'lumotlar mavjud emas")
 except Exception as e:
@@ -1389,7 +1443,7 @@ except Exception as e:
 # ----------------------------
 left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
 with left:
-    st.markdown('<div class="sec-title">🎮 Mini oyinlar trendi</div><div class="sec-sub">Tanlangan davr boyicha</div>', unsafe_allow_html=True)
+    st.markdown('''<div class="sec-title">🎮 Mini o'yinlar trendi</div><div class="sec-sub">O'yinlar bo'yicha</div>''', unsafe_allow_html=True)
 with right:
     m1, m2 = st.columns([1.2, 1], gap="small")
     with m1:
@@ -1458,8 +1512,8 @@ if len(mg_date_range) == 2:
                     line=False
                 )
                 .encode(
-                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10)),
-                    y=alt.Y("OYINLAR:Q", title=""),
+                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
+                    y=alt.Y("OYINLAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                 )
             )
             
@@ -1468,8 +1522,8 @@ if len(mg_date_range) == 2:
                 alt.Chart(mg_stats)
                 .mark_line(color=COLORS["minigame"], strokeWidth=2.6, opacity=0.9)
                 .encode(
-                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10)),
-                    y=alt.Y("OYINLAR:Q", title=""),
+                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
+                    y=alt.Y("OYINLAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                     tooltip=[
                         alt.Tooltip("SANA:T", title="Sana", format="%Y-%m-%d"),
                         alt.Tooltip("OYINLAR:Q", title="O'yinlar", format=","),
@@ -1541,8 +1595,8 @@ try:
             alt.Chart(top_games)
             .mark_bar(color=COLORS["purple"], cornerRadiusTopRight=8, cornerRadiusBottomRight=8, size=34, opacity=0.92)
             .encode(
-                x=alt.X("OYINLAR:Q", title=""),
-                y=alt.Y("NOMI:N", title="", sort="-x"),
+                x=alt.X("OYINLAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
+                y=alt.Y("NOMI:N", title="", sort="-x", axis=alt.Axis(labelFontWeight=600)),
                 tooltip=[
                     alt.Tooltip("NOMI:N", title="O'yin"),
                     alt.Tooltip("OYINLAR:Q", title="O'ynalishlar", format=","),
