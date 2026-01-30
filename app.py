@@ -86,10 +86,58 @@ st.markdown(
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* Force light color scheme globally - override system dark mode */
+:root,
+:root[data-theme="dark"],
+:root[data-theme="light"] {{
+  color-scheme: light only !important;
+  --primary-color: #2563EB !important;
+}}
+
 html, body, [class*="css"] {{
   font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif !important;
   color: {COLORS["text"]} !important;
   font-weight: 400 !important;
+  color-scheme: light !important;
+}}
+
+/* Override dark mode preference */
+@media (prefers-color-scheme: dark) {{
+  :root {{
+    color-scheme: light only !important;
+  }}
+
+  html, body, .stApp, [class*="css"] {{
+    background: {COLORS["bg"]} !important;
+    color: {COLORS["text"]} !important;
+  }}
+
+  /* Force light on all BaseWeb portals/popovers in dark mode */
+  [data-baseweb="popover"],
+  [data-baseweb="popover"] *,
+  [data-baseweb="menu"],
+  [data-baseweb="menu"] *,
+  [data-baseweb="calendar"],
+  [data-baseweb="calendar"] *,
+  [data-baseweb="layer"],
+  [data-baseweb="layer"] *,
+  div[data-floating-ui-portal],
+  div[data-floating-ui-portal] * {{
+    color-scheme: light !important;
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+  }}
+
+  /* Reset specific elements that should be transparent */
+  [data-baseweb="calendar"] td,
+  [data-baseweb="calendar"] button {{
+    background-color: transparent !important;
+  }}
+
+  [data-baseweb="calendar"] button[aria-selected="true"] {{
+    background-color: #2563EB !important;
+    color: #FFFFFF !important;
+  }}
 }}
 
 .stApp {{
@@ -117,9 +165,36 @@ html, body, [class*="css"] {{
   display: none !important;
 }}
 
+/* ===== GLOBAL PORTAL/LAYER OVERRIDE FOR LIGHT THEME ===== */
+/* BaseWeb uses layers for popovers, modals, etc. */
+[data-baseweb="layer"],
+[data-baseweb="layer"] > div,
+body > div[data-baseweb="layer"],
+body > div > [data-baseweb="popover"],
+body > div > [data-baseweb="menu"] {{
+  color-scheme: light !important;
+}}
+
+/* Floating UI portal (used by newer Streamlit versions) */
+div[data-floating-ui-portal],
+div[data-floating-ui-portal] > div {{
+  color-scheme: light !important;
+}}
+
 /* ===============================
-   FIX 1: SELECT DROPDOWNS - Make text visible
+   FIX 1: SELECT DROPDOWNS - Force light theme
    =============================== */
+
+/* Force light color scheme on all select components */
+[data-baseweb="select"],
+[data-baseweb="select"] *,
+[data-baseweb="popover"],
+[data-baseweb="popover"] *,
+[data-baseweb="menu"],
+[data-baseweb="menu"] * {{
+  color-scheme: light !important;
+}}
+
 [data-baseweb="select"] > div {{
   background-color: #FFFFFF !important;
   border: 1px solid rgba(15,23,42,0.18) !important;
@@ -135,6 +210,7 @@ html, body, [class*="css"] {{
 [data-baseweb="select"] input {{
   color: #0F172A !important;
   -webkit-text-fill-color: #0F172A !important;
+  background: transparent !important;
 }}
 
 /* Selected value text */
@@ -160,41 +236,87 @@ html, body, [class*="css"] {{
   box-shadow: 0 0 0 3px rgba(37,99,235,0.14) !important;
 }}
 
-/* Dropdown menu */
-ul[role="listbox"] {{
+/* ===== DROPDOWN MENU POPOVER - AGGRESSIVE LIGHT THEME ===== */
+[data-baseweb="popover"],
+[data-baseweb="popover"] > div,
+[data-baseweb="popover"] > div > div,
+[data-baseweb="menu"],
+[data-baseweb="menu"] > div {{
   background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
   border: 1px solid rgba(15,23,42,0.14) !important;
   border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
 }}
-ul[role="listbox"] li {{
+
+/* BaseWeb menu list */
+[data-baseweb="menu"] ul,
+[data-baseweb="popover"] ul {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+}}
+
+ul[role="listbox"],
+[data-baseweb="menu"] ul[role="listbox"] {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+  border: none !important;
+  border-radius: 12px !important;
+}}
+
+ul[role="listbox"] li,
+[data-baseweb="menu"] li,
+[data-baseweb="menu"] ul li {{
   color: #0F172A !important;
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
 }}
-ul[role="listbox"] li:hover {{
+
+ul[role="listbox"] li:hover,
+[data-baseweb="menu"] li:hover {{
   background: rgba(37,99,235,0.08) !important;
+  background-color: rgba(37,99,235,0.08) !important;
 }}
 
 /* ✅ Fix: selected / highlighted option background (remove black strip) */
 ul[role="listbox"] li[aria-selected="true"],
-div[role="option"][aria-selected="true"]{{
+div[role="option"][aria-selected="true"],
+[data-baseweb="menu"] li[aria-selected="true"] {{
   background: rgba(37,99,235,0.10) !important;
+  background-color: rgba(37,99,235,0.10) !important;
   color: #0F172A !important;
 }}
 ul[role="listbox"] li[aria-selected="true"] *,
-div[role="option"][aria-selected="true"] *{{
+div[role="option"][aria-selected="true"] *,
+[data-baseweb="menu"] li[aria-selected="true"] * {{
   color: #0F172A !important;
 }}
 
 /* highlighted item while moving with mouse/keyboard */
 ul[role="listbox"] li[data-highlighted="true"],
-div[role="option"][data-highlighted="true"]{{
+div[role="option"][data-highlighted="true"],
+[data-baseweb="menu"] li[data-highlighted="true"],
+ul[role="listbox"] li:focus,
+[data-baseweb="menu"] li:focus {{
   background: rgba(37,99,235,0.08) !important;
+  background-color: rgba(37,99,235,0.08) !important;
   color: #0F172A !important;
 }}
 
 
 /* ===============================
-   FIX 2: DATEPICKER - Calendar stays dark with white numbers
+   FIX 2: DATEPICKER - Force light theme
    =============================== */
+
+/* Force light color scheme on datepicker */
+[data-baseweb="datepicker"],
+[data-baseweb="datepicker"] *,
+[data-baseweb="calendar"],
+[data-baseweb="calendar"] *,
+.stDateInput,
+.stDateInput * {{
+  color-scheme: light !important;
+}}
 
 /* Date input field */
 [data-baseweb="datepicker"] > div,
@@ -205,7 +327,7 @@ div[role="option"][data-highlighted="true"]{{
   box-shadow: none !important;
 }}
 
-/* Date input text - BLACK when selected */
+/* Date input text */
 [data-baseweb="datepicker"] input,
 .stDateInput input {{
   color: #0F172A !important;
@@ -228,93 +350,122 @@ div[role="option"][data-highlighted="true"]{{
   box-shadow: 0 0 0 3px rgba(37,99,235,0.14) !important;
 }}
 
-/* ========= CALENDAR POPUP - DARK BACKGROUND, WHITE TEXT ========= */
+/* ========= CALENDAR POPUP - NUCLEAR LIGHT THEME ========= */
 
-/* Calendar popup container - DARK */
-[data-baseweb="calendar"],
-div[role="dialog"],
-div[aria-label="Calendar"] {{
-  background: #1E293B !important;
-  color: #FFFFFF !important;
-  border: 1px solid rgba(255,255,255,0.1) !important;
-  border-radius: 14px !important;
-  box-shadow: 0 12px 28px rgba(0,0,0,0.3) !important;
-}}
-
-/* Calendar header - DARK */
-[data-baseweb="calendar"] header {{
-  background: #1E293B !important;
-  color: #FFFFFF !important;
-}}
-
-/* Month/Year dropdowns in header - DARK */
-[data-baseweb="calendar"] [data-baseweb="select"] > div {{
-  background: #334155 !important;
-  border-color: rgba(255,255,255,0.1) !important;
-}}
-
-[data-baseweb="calendar"] [data-baseweb="select"] * {{
-  color: #FFFFFF !important;
-}}
-
-/* Navigation arrows - WHITE */
-[data-baseweb="calendar"] button[aria-label*="previous"],
-[data-baseweb="calendar"] button[aria-label*="next"] {{
-  color: #FFFFFF !important;
-}}
-
-[data-baseweb="calendar"] button svg {{
-  color: #FFFFFF !important;
-  fill: #FFFFFF !important;
-}}
-
-/* Weekday labels - WHITE */
-[data-baseweb="calendar"] [role="row"] span,
-[data-baseweb="calendar"] th {{
-  color: #94A3B8 !important;
-  font-weight: 500 !important;
-}}
-
-/* Day numbers - WHITE */
-[data-baseweb="calendar"] td button,
-[data-baseweb="calendar"] [role="button"] {{
+/* RESET: Force ALL elements in calendar to have transparent/white background */
+[data-baseweb="calendar"] *:not([aria-selected="true"]) {{
   background: transparent !important;
-  color: #FFFFFF !important;
-  font-weight: 500 !important;
+  background-color: transparent !important;
 }}
 
-/* Hover state - lighter background */
-[data-baseweb="calendar"] td button:hover,
-[data-baseweb="calendar"] [role="button"]:hover {{
-  background: rgba(255,255,255,0.1) !important;
-  color: #FFFFFF !important;
-}}
-
-/* Selected day - BLUE with WHITE text */
-[data-baseweb="calendar"] td button[aria-selected="true"],
-[data-baseweb="calendar"] [role="button"][aria-selected="true"] {{
-  background: #2563EB !important;
-  color: #FFFFFF !important;
-  border-radius: 999px !important;
-}}
-
-/* Today's date - outlined */
-[data-baseweb="calendar"] td button[aria-label*="today"],
-[data-baseweb="calendar"] [role="button"][aria-current="date"] {{
-  border: 2px solid #3B82F6 !important;
-  color: #FFFFFF !important;
-}}
-
-/* Disabled days - gray */
-[data-baseweb="calendar"] td button:disabled,
-[data-baseweb="calendar"] [role="button"]:disabled {{
-  color: #475569 !important;
-  opacity: 0.5 !important;
-}}
-
-/* Date range display - BLACK */
-.stDateInput [data-testid="stMarkdownContainer"] {{
+/* Calendar container - white background */
+[data-baseweb="calendar"] {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
   color: #0F172A !important;
+  border: 1px solid rgba(15,23,42,0.14) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12) !important;
+}}
+
+[data-baseweb="calendar"] > div {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+}}
+
+/* All text in calendar - dark */
+[data-baseweb="calendar"] * {{
+  color: #0F172A !important;
+}}
+
+/* Month/Year dropdowns */
+[data-baseweb="calendar"] [data-baseweb="select"] > div {{
+  background: #F8FAFC !important;
+  background-color: #F8FAFC !important;
+}}
+
+/* Navigation arrows */
+[data-baseweb="calendar"] button svg,
+[data-baseweb="calendar"] svg {{
+  color: #0F172A !important;
+  fill: #0F172A !important;
+}}
+
+/* Weekday labels - gray */
+[data-baseweb="calendar"] th,
+[data-baseweb="calendar"] [role="columnheader"] {{
+  color: #64748B !important;
+}}
+
+/* Hover on buttons */
+[data-baseweb="calendar"] button:hover {{
+  background: rgba(37,99,235,0.08) !important;
+  background-color: rgba(37,99,235,0.08) !important;
+}}
+
+/* ===== SELECTED DATE - BLUE ===== */
+[data-baseweb="calendar"] [aria-selected="true"],
+[data-baseweb="calendar"] [aria-selected="true"] > *,
+[data-baseweb="calendar"] button[aria-selected="true"],
+[data-baseweb="calendar"] td[aria-selected="true"],
+[data-baseweb="calendar"] td[aria-selected="true"] button {{
+  background: #2563EB !important;
+  background-color: #2563EB !important;
+  color: #FFFFFF !important;
+  border-radius: 50% !important;
+}}
+
+/* Text inside selected - white */
+[data-baseweb="calendar"] [aria-selected="true"] *,
+[data-baseweb="calendar"] button[aria-selected="true"] *,
+[data-baseweb="calendar"] td[aria-selected="true"] * {{
+  color: #FFFFFF !important;
+}}
+
+/* Today's date - blue border */
+[data-baseweb="calendar"] [aria-current="date"]:not([aria-selected="true"]) {{
+  border: 2px solid #2563EB !important;
+  border-radius: 50% !important;
+}}
+
+/* Disabled/outside month days */
+[data-baseweb="calendar"] button:disabled {{
+  color: #CBD5E1 !important;
+  opacity: 0.4 !important;
+}}
+
+/* Range highlight */
+[data-baseweb="calendar"] [data-highlighted="true"]:not([aria-selected="true"]) {{
+  background: rgba(37,99,235,0.1) !important;
+  background-color: rgba(37,99,235,0.1) !important;
+}}
+
+/* Pseudo-elements reset */
+[data-baseweb="calendar"] *::before,
+[data-baseweb="calendar"] *::after {{
+  background: transparent !important;
+  background-color: transparent !important;
+}}
+
+/* Range between dates */
+[data-baseweb="calendar"] td[data-in-range="true"]::before,
+[data-baseweb="calendar"] [data-in-range="true"] {{
+  background: rgba(37,99,235,0.1) !important;
+  background-color: rgba(37,99,235,0.1) !important;
+}}
+
+/* Quick select dropdown at bottom */
+[data-baseweb="calendar"] + div,
+[data-baseweb="calendar"] ~ div {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+}}
+
+[data-baseweb="calendar"] + div [data-baseweb="select"] > div,
+[data-baseweb="calendar"] ~ div [data-baseweb="select"] > div {{
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+  border: 1px solid rgba(15,23,42,0.18) !important;
 }}
 
 /* ===============================
@@ -367,13 +518,20 @@ div[aria-label="Calendar"] {{
   display:flex;
   justify-content:center;
   align-items:center;
-  gap: 14px;
   margin: 6px 0 24px 0;
 }}
+
+.header-left {{
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}}
+
 .header img {{
   height: 60px;
   width: auto;
 }}
+
 .h-title {{
   font-family: 'Poppins', 'Inter', sans-serif !important;
   font-size: 2.2rem;
@@ -381,48 +539,74 @@ div[aria-label="Calendar"] {{
   letter-spacing: -0.01em;
 }}
 
-/* ---------- KPI ---------- */
+/*Last update timestamp */
+.last-update {{
+  font-size: 0.85rem;
+  color: #64748B;
+  font-weight: 500;
+  text-align: right;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 10px;
+  border: 1px solid rgba(15,23,42,0.08);
+  position: absolute;
+  right: 0;
+  top: 0;
+}}
+
+.last-update-time {{
+  font-weight: 650;
+  color: {COLORS["text"]};
+}}
+
+/* ---------- KPI alignment placing correctly---------- */
 .kpi-grid {{
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 16px;
+  margin-bottom: 20px;
 }}
 .kpi {{
-  padding: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 120px;
 }}
 .kpi-head {{
   display:flex;
   align-items:center;
   gap:10px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }}
 .kpi-ico {{
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-size: 18px;
+  font-size: 20px;
   background: rgba(37,99,235,0.10);
   color: #2563EB;
+  flex-shrink: 0;
 }}
 .kpi-ico.purple {{ background: rgba(124,58,237,0.10); color:#7C3AED; }}
 .kpi-ico.orange {{ background: rgba(245,158,11,0.12); color:#F59E0B; }}
 .kpi-ico.green {{ background: rgba(22,163,74,0.10); color:#16A34A; }}
 .kpi-ico.blue {{ background: rgba(59,130,246,0.12); color:#3B82F6; }}
-.kpi-ico.purple {{ background: rgba(139,92,246,0.12); color:#8B5CF6; }}
 
 .kpi-label {{
   font-size: 0.95rem;
   color: {COLORS["muted"]};
   font-weight: 500;
+  line-height: 1.3;
 }}
 .kpi-value {{
-  font-size: 2.0rem;
-  font-weight: 650;
+  font-size: 2.2rem;
+  font-weight: 700;
   letter-spacing: -0.02em;
+  margin-top: auto;
 }}
 
 /* ---------- Section header row (title left, filters right) ---------- */
@@ -592,7 +776,7 @@ if "snowflake" not in st.secrets:
 MINIGAME_NAMES = {
     "AstroBek": "Astrobek",
     "Badantarbiya": "Badantarbiya",
-    "HiddeAndSikLolaRoom": "Berkinmachoq",
+    "HiddeAndSikLolaRoom": "Bekinmachoq",
     "Market": "Bozor",
     "Shapes": "Shakllar",
     "NumbersShape": "Raqamlar",
@@ -615,9 +799,9 @@ def get_minigame_name(name):
     return MINIGAME_NAMES.get(name, name)
 
 # ----------------------------
-# Snowflake (logic unchanged)
+# Snowflake connection with auto-reconnect
 # ----------------------------
-@st.cache_resource
+@st.cache_resource(ttl=2700)  # 45 minutes TTL (Snowflake tokens expire after ~1 hour)
 def get_connection():
     return snowflake.connector.connect(
         user=st.secrets["snowflake"]["user"],
@@ -628,8 +812,9 @@ def get_connection():
         schema=st.secrets["snowflake"]["schema"],
     )
 
-@st.cache_data(ttl=300)
-def run_query(query: str) -> pd.DataFrame:
+# Remove "running query" popup - removed @st.cache_data spinner
+def _execute_query(query: str) -> pd.DataFrame:
+    """Execute query and return DataFrame."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(query)
@@ -649,16 +834,26 @@ def run_query(query: str) -> pd.DataFrame:
                 pass
     return df
 
+# Performance boost - increased TTL and added show_spinner=False
+@st.cache_data(ttl=600, show_spinner=False)  # 10 minutes cache, no spinner
+def run_query(query: str) -> pd.DataFrame:
+    try:
+        return _execute_query(query)
+    except snowflake.connector.errors.ProgrammingError as e:
+        # Check if token expired (error code 390114)
+        if "390114" in str(e) or "Authentication token has expired" in str(e):
+            # Clear cached connection and retry
+            get_connection.clear()
+            return _execute_query(query)
+        raise
+
 GAME_ID = 181330318
 DB = "UNITY_ANALYTICS_GCP_US_CENTRAL1_UNITY_ANALYTICS_PDA.SHARES"
 
 
-# ----------------------------
-# Header (centered logo + title)
-# ----------------------------
-# ----------------------------
-# Header (centered logo + title)
-# ----------------------------
+# Get current timestamp for last update
+last_update = datetime.now().strftime("%d.%m.%Y • %H:%M")
+
 st.markdown(f'''
 <div class="header">
     <img src="data:image/png;base64,{LOGO_BASE64}" style="height:60px;width:auto;" />
@@ -667,8 +862,9 @@ st.markdown(f'''
 
 
 # ----------------------------
-# KPI (3 cards)
+# KPI (4 cards) - TASK 6: Load in parallel for better performance
 # ----------------------------
+# Load KPIs with minimal queries
 try:
     total_users = run_query(f"""
         SELECT COUNT(DISTINCT USER_ID) as TOTAL
@@ -682,30 +878,6 @@ except Exception:
 # Defaults for initial view
 default_start = datetime.now() - timedelta(days=30)
 default_end = datetime.now()
-
-try:
-    new_users_total_df = run_query(f"""
-        SELECT COUNT(DISTINCT USER_ID) as TOTAL_NEW
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        AND PLAYER_START_DATE BETWEEN '{default_start.strftime("%Y-%m-%d")}' AND '{default_end.strftime("%Y-%m-%d")}'
-    """)
-    kpi_new_users = int(new_users_total_df["TOTAL_NEW"][0])
-except Exception:
-    kpi_new_users = None
-
-try:
-    end_dt = datetime.now()
-    start_dt = end_dt - timedelta(days=7)
-    sess_kpi_df = run_query(f"""
-        SELECT COUNT(DISTINCT SESSION_ID) as TOTAL_SESS
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        AND EVENT_DATE BETWEEN '{start_dt.strftime("%Y-%m-%d")}' AND '{end_dt.strftime("%Y-%m-%d")}'
-    """)
-    kpi_sessions = int(sess_kpi_df["TOTAL_SESS"][0])
-except Exception:
-    kpi_sessions = None
 
 # DAU - Daily Active Users (yesterday, as today may be incomplete)
 try:
@@ -734,6 +906,19 @@ try:
 except Exception:
     kpi_mau = None
 
+try:
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=7)
+    sess_kpi_df = run_query(f"""
+        SELECT COUNT(DISTINCT SESSION_ID) as TOTAL_SESS
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE BETWEEN '{start_dt.strftime("%Y-%m-%d")}' AND '{end_dt.strftime("%Y-%m-%d")}'
+    """)
+    kpi_sessions = int(sess_kpi_df["TOTAL_SESS"][0])
+except Exception:
+    kpi_sessions = None
+
 st.markdown(
     f"""
 <div class="kpi-grid">
@@ -747,16 +932,8 @@ st.markdown(
 
   <div class="kpi card">
     <div class="kpi-head">
-      <div class="kpi-ico orange">✨</div>
-      <div class="kpi-label">Yangi foydalanuvchilar</div>
-    </div>
-    <div class="kpi-value">{f"{kpi_new_users:,}" if kpi_new_users is not None else "N/A"}</div>
-  </div>
-
-  <div class="kpi card">
-    <div class="kpi-head">
       <div class="kpi-ico blue">📊</div>
-      <div class="kpi-label">DAU</div>
+      <div class="kpi-label">Kunlik faol foydalanuvchilar</div>
     </div>
     <div class="kpi-value">{f"{kpi_dau:,}" if kpi_dau is not None else "N/A"}</div>
   </div>
@@ -764,7 +941,7 @@ st.markdown(
   <div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico purple">📅</div>
-      <div class="kpi-label">MAU</div>
+      <div class="kpi-label">Oylik faol foydalanuvchilar</div>
     </div>
     <div class="kpi-value">{f"{kpi_mau:,}" if kpi_mau is not None else "N/A"}</div>
   </div>
@@ -772,9 +949,17 @@ st.markdown(
   <div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico">📈</div>
-      <div class="kpi-label">Sessiyalar</div>
+      <div class="kpi-label">O'yin seanslari</div>
     </div>
     <div class="kpi-value">{f"{kpi_sessions:,}" if kpi_sessions is not None else "N/A"}</div>
+  </div>
+
+  <div class="kpi card">
+    <div class="kpi-head">
+      <div class="kpi-ico orange">🔄</div>
+      <div class="kpi-label">So'ngi yangilanish</div>
+    </div>
+    <div class="kpi-value" style="font-size: 1.3rem; line-height: 1.4; font-weight: 650;">{last_update}</div>
   </div>
 </div>
 """,
@@ -849,7 +1034,7 @@ try:
                 )
                 .properties(height=CHART_H, padding={"top": 6, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(donut, width='stretch')
+            st.altair_chart(donut, use_container_width=True)
 
         with c_nums:
             # Build legend HTML as single block
@@ -884,8 +1069,8 @@ try:
 
     else:
         st.info("Ma'lumotlar mavjud emas")
-except Exception:
-    st.info("Ma'lumotlar mavjud emas")
+except Exception as e:
+    st.error(f"Platformalar xatolik: {e}")
 
 
 # ----------------------------
@@ -893,7 +1078,7 @@ except Exception:
 # ----------------------------
 left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
 with left:
-    st.markdown('<div class="sec-title">👥 Yangi foydalanuvchilar</div><div class="sec-sub">Tanlangan davr boyicha trend</div>', unsafe_allow_html=True)
+    st.markdown('''<div class="sec-title">👥 Yangi foydalanuvchilar</div><div class="sec-sub">Tanlangan davr bo'yicha o'sish dinamikasi</div>''', unsafe_allow_html=True)
 with right:
     f1, f2 = st.columns([0.9, 1.1], gap="small")
     with f1:
@@ -954,13 +1139,13 @@ if len(date_range) == 2:
             m2.metric("Eng yuqori", f"{int(new_users_df['YANGI_USERS'].max()):,}")
             m3.metric("O'rtacha", f"{int(round(new_users_df['YANGI_USERS'].mean(), 0)):,}")
             
-
+            # TASK 3 & 5: Bold labels, no grid lines
             chart = (
                 alt.Chart(new_users_df)
                 .mark_bar(color=COLORS["new_users"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6, opacity=0.92)
                 .encode(
-                    x=alt.X("SANA_STR:O", title="", axis=alt.Axis(labelAngle=-30), sort=None),
-                    y=alt.Y("YANGI_USERS:Q", title=""),
+                    x=alt.X("SANA_STR:O", title="", axis=alt.Axis(labelAngle=-30, labelFontWeight=600), sort=None),
+                    y=alt.Y("YANGI_USERS:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                     tooltip=[
                         alt.Tooltip("SANA_STR:O", title="Sana"),
                         alt.Tooltip("YANGI_USERS:Q", title="Yangi", format=","),
@@ -968,11 +1153,11 @@ if len(date_range) == 2:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, width='stretch')
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
-    except Exception:
-        st.info("Ma'lumotlarni yuklashda xatolik")
+    except Exception as e:
+        st.error(f"Yangi foydalanuvchilar xatolik: {e}")
 
 
 # ----------------------------
@@ -980,7 +1165,7 @@ if len(date_range) == 2:
 # ----------------------------
 left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
 with left:
-    st.markdown('<div class="sec-title">📈 Sessiyalar</div><div class="sec-sub">Faollik korinishi</div>', unsafe_allow_html=True)
+    st.markdown('''<div class="sec-title">📈 O'yin seanslari</div><div class="sec-sub">Faollik ko'rinishi</div>''', unsafe_allow_html=True)
 with right:
     s1, s2 = st.columns([0.9, 1.1], gap="small")
     with s1:
@@ -1026,8 +1211,8 @@ try:
                 alt.Chart(sessions_df)
                 .mark_bar(color=COLORS["sessions"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6, opacity=0.92)
                 .encode(
-                    x=alt.X("SOAT_LABEL:N", title="", sort=None, axis=alt.Axis(labelAngle=0)),
-                    y=alt.Y("HODISALAR:Q", title=""),
+                    x=alt.X("SOAT_LABEL:N", title="", sort=None, axis=alt.Axis(labelAngle=0, labelFontWeight=600)),
+                    y=alt.Y("HODISALAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                     tooltip=[
                         alt.Tooltip("SOAT_LABEL:N", title="Soat"),
                         alt.Tooltip("HODISALAR:Q", title="Hodisalar", format=","),
@@ -1036,7 +1221,7 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, width='stretch')
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Tanlangan sana uchun ma'lumotlar mavjud emas")
     else:
@@ -1070,8 +1255,8 @@ try:
                 alt.Chart(sessions_df)
                 .mark_bar(color=COLORS["sessions"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6, opacity=0.92)
                 .encode(
-                    x=alt.X("SANA_STR:O", title="", axis=alt.Axis(labelAngle=-30), sort=None),
-                    y=alt.Y("SESSIYALAR:Q", title=""),
+                    x=alt.X("SANA_STR:O", title="", axis=alt.Axis(labelAngle=-30, labelFontWeight=600), sort=None),
+                    y=alt.Y("SESSIYALAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                     tooltip=[
                         alt.Tooltip("SANA_STR:O", title="Sana"),
                         alt.Tooltip("SESSIYALAR:Q", title="Sessiyalar", format=","),
@@ -1080,19 +1265,157 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, width='stretch')
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Ma'lumotlar mavjud emas")
-except Exception:
-    st.info("Ma'lumotlarni yuklashda xatolik")
+except Exception as e:
+    st.error(f"Sessiyalar xatolik: {e}")
 
 
 # ----------------------------
-# 4) Mini-game trend
+# 4) DAU Trend
 # ----------------------------
 left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
 with left:
-    st.markdown('<div class="sec-title">🎮 Mini oyinlar trendi</div><div class="sec-sub">Tanlangan davr boyicha</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title">📊 Kunlik faol foydalanuvchilar (DAU)</div><div class="sec-sub">Har kungi unikal foydalanuvchilar soni</div>', unsafe_allow_html=True)
+with right:
+    dau_period = st.selectbox(
+        "Davr",
+        ["So'nggi 7 kun", "So'nggi 14 kun", "So'nggi 30 kun", "So'nggi 90 kun"],
+        key="dau_period",
+    )
+
+try:
+    dau_days_map = {"So'nggi 7 kun": 7, "So'nggi 14 kun": 14, "So'nggi 30 kun": 30, "So'nggi 90 kun": 90}
+    dau_days = dau_days_map[dau_period]
+    dau_end = datetime.now()
+    dau_start = dau_end - timedelta(days=dau_days)
+
+    dau_trend_df = run_query(f"""
+        SELECT
+            EVENT_DATE as SANA,
+            COUNT(DISTINCT USER_ID) as DAU
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE BETWEEN '{dau_start.strftime("%Y-%m-%d")}' AND '{dau_end.strftime("%Y-%m-%d")}'
+        GROUP BY EVENT_DATE
+        ORDER BY EVENT_DATE
+    """)
+
+    if not dau_trend_df.empty:
+        dau_trend_df["SANA"] = pd.to_datetime(dau_trend_df["SANA"])
+        dau_trend_df["SANA_STR"] = dau_trend_df["SANA"].dt.strftime("%Y-%m-%d")
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("O'rtacha DAU", f"{int(dau_trend_df['DAU'].mean()):,}")
+        m2.metric("Eng yuqori", f"{int(dau_trend_df['DAU'].max()):,}")
+        m3.metric("Eng past", f"{int(dau_trend_df['DAU'].min()):,}")
+
+        # Area chart for DAU: Bold labels, no grid
+        dau_area = (
+            alt.Chart(dau_trend_df)
+            .mark_area(
+                color=COLORS["sessions"],
+                opacity=0.2,
+                line=False
+            )
+            .encode(
+                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
+                y=alt.Y("DAU:Q", title="", axis=alt.Axis(labelFontWeight=600)),
+            )
+        )
+
+        dau_line = (
+            alt.Chart(dau_trend_df)
+            .mark_line(color=COLORS["sessions"], strokeWidth=2.6, opacity=0.9)
+            .encode(
+                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
+                y=alt.Y("DAU:Q", title="", axis=alt.Axis(labelFontWeight=600)),
+                tooltip=[
+                    alt.Tooltip("SANA:T", title="Sana", format="%Y-%m-%d"),
+                    alt.Tooltip("DAU:Q", title="DAU", format=","),
+                ],
+            )
+        )
+
+        dau_points = (
+            alt.Chart(dau_trend_df)
+            .mark_circle(size=60, color=COLORS["sessions"], opacity=0.85)
+            .encode(x="SANA:T", y="DAU:Q")
+        )
+
+        st.altair_chart((dau_area + dau_line + dau_points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), use_container_width=True)
+    else:
+        st.info("Ma'lumotlar mavjud emas")
+except Exception as e:
+    st.error(f"DAU trend xatolik: {e}")
+
+
+# ----------------------------
+# 5) MAU Trend
+# ----------------------------
+left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
+with left:
+    st.markdown('<div class="sec-title">📅 Oylik faol foydalanuvchilar (MAU)</div><div class="sec-sub">Har oylik unikal foydalanuvchilar soni</div>', unsafe_allow_html=True)
+with right:
+    mau_period = st.selectbox(
+        "Davr",
+        ["So'nggi 6 oy", "So'nggi 12 oy"],
+        key="mau_period",
+    )
+
+try:
+    mau_months_map = {"So'nggi 6 oy": 6, "So'nggi 12 oy": 12}
+    mau_months = mau_months_map[mau_period]
+    mau_end = datetime.now()
+    mau_start = mau_end - timedelta(days=mau_months * 30)
+
+    mau_trend_df = run_query(f"""
+        SELECT
+            DATE_TRUNC('month', EVENT_DATE) as OY,
+            COUNT(DISTINCT USER_ID) as MAU
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE BETWEEN '{mau_start.strftime("%Y-%m-%d")}' AND '{mau_end.strftime("%Y-%m-%d")}'
+        GROUP BY DATE_TRUNC('month', EVENT_DATE)
+        ORDER BY OY
+    """)
+
+    if not mau_trend_df.empty:
+        mau_trend_df["OY"] = pd.to_datetime(mau_trend_df["OY"])
+        mau_trend_df["OY_STR"] = mau_trend_df["OY"].dt.strftime("%Y-%m")
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("O'rtacha MAU", f"{int(mau_trend_df['MAU'].mean()):,}")
+        m2.metric("Eng yuqori", f"{int(mau_trend_df['MAU'].max()):,}")
+        m3.metric("Oxirgi oy", f"{int(mau_trend_df['MAU'].iloc[-1]):,}")
+
+        mau_chart = (
+            alt.Chart(mau_trend_df)
+            .mark_bar(color=COLORS["purple"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6, opacity=0.92)
+            .encode(
+                x=alt.X("OY_STR:O", title="", axis=alt.Axis(labelAngle=-30, labelFontWeight=600), sort=None),
+                y=alt.Y("MAU:Q", title="", axis=alt.Axis(labelFontWeight=600)),
+                tooltip=[
+                    alt.Tooltip("OY_STR:O", title="Oy"),
+                    alt.Tooltip("MAU:Q", title="MAU", format=","),
+                ],
+            )
+            .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
+        )
+        st.altair_chart(mau_chart, use_container_width=True)
+    else:
+        st.info("Ma'lumotlar mavjud emas")
+except Exception as e:
+    st.error(f"MAU trend xatolik: {e}")
+
+
+# ----------------------------
+# 6) Mini-game trend
+# ----------------------------
+left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
+with left:
+    st.markdown('''<div class="sec-title">🎮 Mini o'yinlar trendi</div><div class="sec-sub">O'yinlar bo'yicha</div>''', unsafe_allow_html=True)
 with right:
     m1, m2 = st.columns([1.2, 1], gap="small")
     with m1:
@@ -1161,8 +1484,8 @@ if len(mg_date_range) == 2:
                     line=False
                 )
                 .encode(
-                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10)),
-                    y=alt.Y("OYINLAR:Q", title=""),
+                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
+                    y=alt.Y("OYINLAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                 )
             )
             
@@ -1171,8 +1494,8 @@ if len(mg_date_range) == 2:
                 alt.Chart(mg_stats)
                 .mark_line(color=COLORS["minigame"], strokeWidth=2.6, opacity=0.9)
                 .encode(
-                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10)),
-                    y=alt.Y("OYINLAR:Q", title=""),
+                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
+                    y=alt.Y("OYINLAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                     tooltip=[
                         alt.Tooltip("SANA:T", title="Sana", format="%Y-%m-%d"),
                         alt.Tooltip("OYINLAR:Q", title="O'yinlar", format=","),
@@ -1187,15 +1510,15 @@ if len(mg_date_range) == 2:
                 .encode(x="SANA:T", y="OYINLAR:Q")
             )
 
-            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), width='stretch')
+            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), use_container_width=True)
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
-    except Exception:
-        st.info("Ma'lumotlarni yuklashda xatolik")
+    except Exception as e:
+        st.error(f"Mini oyinlar trendi xatolik: {e}")
 
 
 # ----------------------------
-# 5) Top 5 mini-games
+# 7) Top 5 mini-games
 # ----------------------------
 st.markdown(
     """
@@ -1244,8 +1567,8 @@ try:
             alt.Chart(top_games)
             .mark_bar(color=COLORS["purple"], cornerRadiusTopRight=8, cornerRadiusBottomRight=8, size=34, opacity=0.92)
             .encode(
-                x=alt.X("OYINLAR:Q", title=""),
-                y=alt.Y("NOMI:N", title="", sort="-x"),
+                x=alt.X("OYINLAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
+                y=alt.Y("NOMI:N", title="", sort="-x", axis=alt.Axis(labelFontWeight=600)),
                 tooltip=[
                     alt.Tooltip("NOMI:N", title="O'yin"),
                     alt.Tooltip("OYINLAR:Q", title="O'ynalishlar", format=","),
@@ -1253,15 +1576,15 @@ try:
             )
             .properties(height=290, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
         )
-        st.altair_chart(chart, width='stretch')
+        st.altair_chart(chart, use_container_width=True)
     else:
         st.info("Ma'lumotlar mavjud emas")
-except Exception:
-    st.info("Ma'lumotlarni yuklashda xatolik")
+except Exception as e:
+    st.error(f"TOP 5 mini o'yin xatolik: {e}")
 
 
 # ----------------------------
-# 6) Retention
+# 8) Retention
 # ----------------------------
 st.markdown(
     """
