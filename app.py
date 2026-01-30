@@ -987,7 +987,7 @@ st.markdown(
       <div class="kpi-ico orange">🔄</div>
       <div class="kpi-label">So'ngi yangilanish</div>
     </div>
-    <div class="kpi-value" style="font-size: 3rem; line-height: 1.4; font-weight: 650;">{last_update}</div>
+    <div class="kpi-value" style="font-size: 2.4rem; line-height: 1.4; font-weight: 650;">{last_update}</div>
   </div>
 </div>
 """,
