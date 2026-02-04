@@ -154,7 +154,10 @@ html, body, [class*="css"] {{
 #MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
 [data-testid="stStatusWidget"], .viewerBadge_container__r5tak,
 .stDeployButton, #stDecoration, .reportview-container .main footer,
-a[href*="streamlit.io"], footer a {{ display: none !important; visibility: hidden !important; }}
+a[href*="streamlit.io"], footer a, [class*="_profileContainer"],
+[class*="stAppDeployButton"], [data-testid="stAppViewBlockContainer"] > div:first-child {{
+  display: none !important; visibility: hidden !important;
+}}
 
 [data-testid="stHeader"] {{
   background: transparent !important;
