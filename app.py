@@ -151,12 +151,14 @@ html, body, [class*="css"] {{
   padding: 0.7rem 1.6rem 2rem 1.6rem;
 }}
 
-#MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
-[data-testid="stStatusWidget"], .viewerBadge_container__r5tak,
+#MainMenu, footer, header, [data-testid="stToolbar"], [data-testid="stDecoration"],
+[data-testid="stStatusWidget"], [data-testid="stHeader"], .viewerBadge_container__r5tak,
 .stDeployButton, #stDecoration, .reportview-container .main footer,
 a[href*="streamlit.io"], footer a, [class*="_profileContainer"],
-[class*="stAppDeployButton"], [data-testid="stAppViewBlockContainer"] > div:first-child {{
-  display: none !important; visibility: hidden !important;
+[class*="stAppDeployButton"], [class*="_profilePreview"], [class*="gzau3"],
+iframe[title*="streamlit"], div[class*="profile"] {{
+  display: none !important; visibility: hidden !important; height: 0 !important;
+  width: 0 !important; overflow: hidden !important;
 }}
 
 [data-testid="stHeader"] {{
