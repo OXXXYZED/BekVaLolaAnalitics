@@ -151,7 +151,7 @@ html, body, [class*="css"] {{
   padding: 0.7rem 1.6rem 2rem 1.6rem;
 }}
 
-#MainMenu, footer {{ visibility: hidden; }}
+#MainMenu, footer, [data-testid="stToolbar"] {{ display: none !important; }}
 
 [data-testid="stHeader"] {{
   background: transparent !important;
