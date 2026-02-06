@@ -55,6 +55,7 @@ LOGO_BASE64 = get_logo_base64()
 # ----------------------------
 # Altair clean light theme (transparent background; Streamlit card shows bg)
 # ----------------------------
+@alt.theme.register("clean_light", enable=True)
 def _clean_light_theme():
     return {
         "config": {
@@ -79,7 +80,7 @@ alt.theme.enable("clean_light")
 
 
 # ----------------------------
-# CSS (Mutolaa-like clean light + FIX all issues)
+# CSS theme
 # ----------------------------
 st.markdown(
     f"""
@@ -757,10 +758,15 @@ ul[role="listbox"] li:focus,
   }}
 }}
 
+.chart-title {{
+  margin-bottom: 4px !important;
+}}
+
 </style>
 """,
     unsafe_allow_html=True,
 )
+
 
 
 # ----------------------------
@@ -852,7 +858,21 @@ DB = "UNITY_ANALYTICS_GCP_US_CENTRAL1_UNITY_ANALYTICS_PDA.SHARES"
 
 
 # Get current timestamp for last update
-last_update = datetime.now().strftime("%d.%m.%Y • %H:%M")
+last_update_date = "15.01.2026"
+try:
+    last_ver_df = run_query(f"""
+        SELECT COALESCE(CLIENT_VERSION, 'Noma''lum') AS LAST_UPDATE_VERSION
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+          AND CLIENT_VERSION IS NOT NULL
+        QUALIFY ROW_NUMBER() OVER (ORDER BY EVENT_DATE DESC) = 1
+    """)
+    last_update_version = last_ver_df["LAST_UPDATE_VERSION"][0] if not last_ver_df.empty else "N/A"
+except Exception:
+    last_update_version = "N/A"
+
+
+
 
 st.markdown(f'''
 <div class="header">
@@ -919,13 +939,40 @@ try:
 except Exception:
     kpi_sessions = None
 
+# DAU - Daily Active Users (yesterday, as today may be incomplete)
+try:
+    yesterday = datetime.now() - timedelta(days=1)
+    dau_df = run_query(f"""
+        SELECT COUNT(DISTINCT USER_ID) as DAU
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE = '{yesterday.strftime("%Y-%m-%d")}'
+    """)
+    kpi_dau = int(dau_df["DAU"][0])
+except Exception:
+    kpi_dau = None
+
+# MAU - Monthly Active Users (last 30 days)
+try:
+    mau_end = datetime.now()
+    mau_start = mau_end - timedelta(days=30)
+    mau_df = run_query(f"""
+        SELECT COUNT(DISTINCT USER_ID) as MAU
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE BETWEEN '{mau_start.strftime("%Y-%m-%d")}' AND '{mau_end.strftime("%Y-%m-%d")}'
+    """)
+    kpi_mau = int(mau_df["MAU"][0])
+except Exception:
+    kpi_mau = None
+
 st.markdown(
     f"""
 <div class="kpi-grid">
   <div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico green">👥</div>
-      <div class="kpi-label">Foydalanuvchilar</div>
+      <div class="kpi-label">Umumiy foydalanuvchilar</div>
     </div>
     <div class="kpi-value">{f"{kpi_total_users:,}" if kpi_total_users is not None else "N/A"}</div>
   </div>
@@ -949,7 +996,7 @@ st.markdown(
   <div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico">📈</div>
-      <div class="kpi-label">O'yin seanslari</div>
+      <div class="kpi-label">O'yin seanslari soni</div>
     </div>
     <div class="kpi-value">{f"{kpi_sessions:,}" if kpi_sessions is not None else "N/A"}</div>
   </div>
@@ -957,10 +1004,18 @@ st.markdown(
   <div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico orange">🔄</div>
-      <div class="kpi-label">So'ngi yangilanish</div>
+        <div style="font-size: 1.1rem; font-weight: 600; color: #444;">
+            So'ngi yangilanish
+        </div>
     </div>
-    <div class="kpi-value" style="font-size: 1.3rem; line-height: 1.4; font-weight: 650;">{last_update}</div>
-  </div>
+    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+        <div style="font-size: 1.75rem; font-weight: 600; color: #1a1a1a; line-height: 1.2;">
+            {last_update_date}
+        </div>
+        <div style="font-size: 1.15rem; font-weight: 500; color: #666;">
+            Versiya • {last_update_version}
+        </div>
+    </div>
 </div>
 """,
     unsafe_allow_html=True,
@@ -1034,7 +1089,7 @@ try:
                 )
                 .properties(height=CHART_H, padding={"top": 6, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(donut, use_container_width=True)
+            st.altair_chart(donut, width="stretch")
 
         with c_nums:
             # Build legend HTML as single block
@@ -1072,6 +1127,145 @@ try:
 except Exception as e:
     st.error(f"Platformalar xatolik: {e}")
 
+# ----------------------------
+# Client versions donut + legend
+# ----------------------------
+st.markdown(
+    """
+<div class="sec-row">
+  <div>
+    <div class="sec-title">🧩 Versiyalar</div>
+    <div class="sec-sub">O'yin versiyasi bo‘yicha foydalanuvchilar taqsimoti</div>
+  </div>
+  <div></div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+try:
+    versions_df = run_query(f"""
+        SELECT
+            COALESCE(CLIENT_VERSION, 'Noma''lum') AS CLIENT_VERSION,
+            COUNT(DISTINCT USER_ID) AS USERS
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+        AND EVENT_DATE >= '2025-12-27'
+        GROUP BY COALESCE(CLIENT_VERSION, 'Noma''lum')
+        ORDER BY USERS DESC
+    """)
+
+    if not versions_df.empty:
+        total_v = int(versions_df["USERS"].sum())
+        versions_df["PERCENT"] = (versions_df["USERS"] / total_v * 100).round(1)
+
+        # Top N + Boshqalar (pie chiroyli ko‘rinishi uchun)
+        TOP_N = 8
+        if len(versions_df) > TOP_N:
+            top_df = versions_df.head(TOP_N).copy()
+            other_users = int(versions_df["USERS"].iloc[TOP_N:].sum())
+            other_percent = round(other_users / total_v * 100, 1)
+
+            top_df = pd.concat(
+                [
+                    top_df,
+                    pd.DataFrame([{
+                        "CLIENT_VERSION": "Boshqalar",
+                        "USERS": other_users,
+                        "PERCENT": other_percent
+                    }])
+                ],
+                ignore_index=True,
+            )
+            versions_df = top_df
+
+        # ✅ 1) Ranglar: chart + legend uchun bitta mapping
+        palette = [
+            "#2563EB", "#7C3AED", "#16A34A", "#F59E0B",
+            "#EF4444", "#06B6D4", "#F97316", "#0EA5E9",
+            "#A855F7", "#22C55E", "#EAB308", "#FB7185",
+        ]
+
+        domain = versions_df["CLIENT_VERSION"].tolist()
+
+        # "Boshqalar" va "Noma'lum" ni kulrang qilib qo'yamiz
+        fixed = {
+            "Boshqalar": COLORS["other"],
+            "Noma'lum": COLORS["other"],
+        }
+
+        # qolganlariga palette’dan rang taqsimlaymiz
+        color_map = {}
+        pi = 0
+        for v in domain:
+            if v in fixed:
+                color_map[v] = fixed[v]
+            else:
+                color_map[v] = palette[pi % len(palette)]
+                pi += 1
+
+        scale = alt.Scale(domain=domain, range=[color_map[v] for v in domain])
+
+        CHART_H = 300
+        c_chart, c_nums = st.columns([1.25, 0.85], gap="large", vertical_alignment="center")
+
+        with c_chart:
+            pie = (
+                alt.Chart(versions_df)
+                .mark_arc(innerRadius=118, outerRadius=150, opacity=0.92)
+                .encode(
+                    theta=alt.Theta(field="USERS", type="quantitative"),
+                    color=alt.Color("CLIENT_VERSION:N", scale=scale, legend=None),
+                    tooltip=[
+                        alt.Tooltip("CLIENT_VERSION:N", title="Versiya"),
+                        alt.Tooltip("USERS:Q", title="Foydalanuvchilar", format=","),
+                        alt.Tooltip("PERCENT:Q", title="Ulush", format=".1f"),
+                    ],
+                )
+                .properties(height=CHART_H, padding={"top": 6, "left": 8, "right": 8, "bottom": 8})
+            )
+            st.altair_chart(pie, width="stretch")
+
+        with c_nums:
+            legend_html = f'''
+<div class="stat-row">
+  <div>
+    <div class="stat-left"><span class="dot" style="background:{COLORS["accent"]};"></span>
+      <span class="stat-label">Jami</span>
+    </div>
+  </div>
+  <div class="stat-right">{total_v:,}</div>
+</div>'''
+
+            for _, r in versions_df.iterrows():
+                v = r["CLIENT_VERSION"]
+                u = int(r["USERS"])
+                pr = float(r["PERCENT"])
+                dot_color = color_map.get(v, COLORS["other"])
+
+                legend_html += f'''
+<div class="stat-row">
+  <div>
+    <div class="stat-left"><span class="dot" style="background:{dot_color};"></span>
+      <span class="stat-label">{v}</span>
+    </div>
+    <div class="stat-sub">{pr:.1f}%</div>
+  </div>
+  <div class="stat-right">{u:,}</div>
+</div>'''
+
+            st.markdown(
+                f'<div class="legend-card card" style="background: #FFFFFF; border: 1px solid rgba(15,23,42,0.14); border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(15,23,42,0.06);">{legend_html}</div>',
+                unsafe_allow_html=True,
+            )
+
+    else:
+        st.info("Ma'lumotlar mavjud emas")
+except Exception as e:
+    st.error(f"Versiyalar xatolik: {e}")
+
+
+
 
 # ----------------------------
 # 2) New users
@@ -1086,14 +1280,21 @@ with right:
     with f2:
         date_range = st.date_input(
             "Sana oralig'i",
-            value=(datetime.now() - timedelta(days=30), datetime.now()),
+            value=(datetime(2025, 12, 27).date(), datetime.now().date()),
             key="new_users_date",
         )
 
 if len(date_range) == 2:
     start_date, end_date = date_range
+    
+    # Har doim 27-dekabrdan boshlanadi
+    min_date = datetime(2025, 12, 27).date()
+    if start_date < min_date:
+        start_date = min_date
+    
     start_str = start_date.strftime("%Y-%m-%d")
-    end_str = end_date.strftime("%Y-%m-%d")
+    end_adjusted = end_date + timedelta(days=1)
+    end_str = end_adjusted.strftime("%Y-%m-%d")
 
     try:
         if period_type == "Kunlik":
@@ -1103,7 +1304,7 @@ if len(date_range) == 2:
                     COUNT(DISTINCT USER_ID) as YANGI_USERS
                 FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
                 WHERE GAME_ID = {GAME_ID}
-                AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
+                AND PLAYER_START_DATE >= '{start_str}' AND PLAYER_START_DATE < '{end_str}'
                 GROUP BY PLAYER_START_DATE
                 ORDER BY PLAYER_START_DATE
             """)
@@ -1114,7 +1315,7 @@ if len(date_range) == 2:
                     COUNT(DISTINCT USER_ID) as YANGI_USERS
                 FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
                 WHERE GAME_ID = {GAME_ID}
-                AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
+                AND PLAYER_START_DATE >= '{start_str}' AND PLAYER_START_DATE < '{end_str}'
                 GROUP BY DATE_TRUNC('week', PLAYER_START_DATE)
                 ORDER BY SANA
             """)
@@ -1125,7 +1326,7 @@ if len(date_range) == 2:
                     COUNT(DISTINCT USER_ID) as YANGI_USERS
                 FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
                 WHERE GAME_ID = {GAME_ID}
-                AND PLAYER_START_DATE BETWEEN '{start_str}' AND '{end_str}'
+                AND PLAYER_START_DATE >= '{start_str}' AND PLAYER_START_DATE < '{end_str}'
                 GROUP BY DATE_TRUNC('month', PLAYER_START_DATE)
                 ORDER BY SANA
             """)
@@ -1139,7 +1340,6 @@ if len(date_range) == 2:
             m2.metric("Eng yuqori", f"{int(new_users_df['YANGI_USERS'].max()):,}")
             m3.metric("O'rtacha", f"{int(round(new_users_df['YANGI_USERS'].mean(), 0)):,}")
             
-            # TASK 3 & 5: Bold labels, no grid lines
             chart = (
                 alt.Chart(new_users_df)
                 .mark_bar(color=COLORS["new_users"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6, opacity=0.92)
@@ -1153,12 +1353,11 @@ if len(date_range) == 2:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width="stretch")
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
     except Exception as e:
         st.error(f"Yangi foydalanuvchilar xatolik: {e}")
-
 
 # ----------------------------
 # 3) Sessions
@@ -1172,12 +1371,12 @@ with right:
         session_view = st.selectbox("Ko'rinish", ["Kunlik", "Soatlik"], key="session_view")
     with s2:
         if session_view == "Soatlik":
-            session_date = st.date_input("Sana", value=datetime.now(), key="session_date")
+            session_date = st.date_input("Sana", value=datetime.now().date(), key="session_date")
             session_period = None
         else:
             session_period = st.selectbox(
                 "Davr",
-                ["So'nggi 7 kun", "So'nggi 14 kun", "So'nggi 30 kun"],
+                ["Hammasi", "So'nggi 7 kun", "So'nggi 14 kun", "So'nggi 30 kun"],
                 key="session_period",
             )
             session_date = None
@@ -1221,14 +1420,19 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width="stretch")
         else:
             st.info("Tanlangan sana uchun ma'lumotlar mavjud emas")
     else:
-        days_map = {"So'nggi 7 kun": 7, "So'nggi 14 kun": 14, "So'nggi 30 kun": 30}
-        days = days_map[session_period]
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
+        # Kunlik ko'rinish uchun
+        if session_period == "Hammasi":
+            start_date = datetime(2025, 12, 27)
+            end_date = datetime.now()  # Hozirgi vaqt
+        else:
+            days_map = {"So'nggi 7 kun": 7, "So'nggi 14 kun": 14, "So'nggi 30 kun": 30}
+            days = days_map[session_period]
+            end_date = datetime.now()  # Hozirgi vaqt
+            start_date = end_date - timedelta(days=days)
 
         sessions_df = run_query(f"""
             SELECT
@@ -1246,7 +1450,7 @@ try:
             m1, m2, m3 = st.columns(3)
             m1.metric("Jami", f"{int(sessions_df['SESSIYALAR'].sum()):,}")
             m2.metric("O'rtacha kunlik", f"{int(sessions_df['SESSIYALAR'].mean()):,}")
-            m3.metric("O'rtacha vaqt (daq)", f"{round(float(sessions_df['ORTACHA_DAVOMIYLIK'].mean()), 1)}")
+            m3.metric("O'rtacha o'yin davomiyligi (daq)", f"{round(float(sessions_df['ORTACHA_DAVOMIYLIK'].mean()), 1)}")
 
             sessions_df["SANA"] = pd.to_datetime(sessions_df["SANA"])
             sessions_df["SANA_STR"] = sessions_df["SANA"].dt.strftime("%Y-%m-%d")
@@ -1265,7 +1469,7 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width="stretch")
         else:
             st.info("Ma'lumotlar mavjud emas")
 except Exception as e:
@@ -1288,8 +1492,15 @@ with right:
 try:
     dau_days_map = {"So'nggi 7 kun": 7, "So'nggi 14 kun": 14, "So'nggi 30 kun": 30, "So'nggi 90 kun": 90}
     dau_days = dau_days_map[dau_period]
-    dau_end = datetime.now()
-    dau_start = dau_end - timedelta(days=dau_days)
+
+    # Set end date to yesterday instead of today
+    dau_end = datetime.now() - timedelta(days=1)
+
+    # Set custom start date for 90 days option
+    if dau_period == "So'nggi 90 kun":
+        dau_start = datetime(2025, 12, 27)
+    else:
+        dau_start = dau_end - timedelta(days=dau_days)
 
     dau_trend_df = run_query(f"""
         SELECT
@@ -1301,7 +1512,6 @@ try:
         GROUP BY EVENT_DATE
         ORDER BY EVENT_DATE
     """)
-
     if not dau_trend_df.empty:
         dau_trend_df["SANA"] = pd.to_datetime(dau_trend_df["SANA"])
         dau_trend_df["SANA_STR"] = dau_trend_df["SANA"].dt.strftime("%Y-%m-%d")
@@ -1310,6 +1520,9 @@ try:
         m1.metric("O'rtacha DAU", f"{int(dau_trend_df['DAU'].mean()):,}")
         m2.metric("Eng yuqori", f"{int(dau_trend_df['DAU'].max()):,}")
         m3.metric("Eng past", f"{int(dau_trend_df['DAU'].min()):,}")
+
+        # Davrga qarab tickCount ni sozlash
+        tick_count = 5 if dau_period == "So'nggi 90 kun" else 7
 
         # Area chart for DAU: Bold labels, no grid
         dau_area = (
@@ -1320,7 +1533,7 @@ try:
                 line=False
             )
             .encode(
-                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
+                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=tick_count, labelFontWeight=600)),
                 y=alt.Y("DAU:Q", title="", axis=alt.Axis(labelFontWeight=600)),
             )
         )
@@ -1329,7 +1542,7 @@ try:
             alt.Chart(dau_trend_df)
             .mark_line(color=COLORS["sessions"], strokeWidth=2.6, opacity=0.9)
             .encode(
-                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
+                x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=tick_count, labelFontWeight=600)),
                 y=alt.Y("DAU:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                 tooltip=[
                     alt.Tooltip("SANA:T", title="Sana", format="%Y-%m-%d"),
@@ -1350,7 +1563,6 @@ try:
 except Exception as e:
     st.error(f"DAU trend xatolik: {e}")
 
-
 # ----------------------------
 # 5) MAU Trend
 # ----------------------------
@@ -1370,6 +1582,12 @@ try:
     mau_end = datetime.now()
     mau_start = mau_end - timedelta(days=mau_months * 30)
 
+    # Release bolgan vaqtdan boshlab analiz qilsin
+    min_date = datetime(2025, 12, 27)
+    if mau_start < min_date:
+        mau_start = min_date
+
+
     mau_trend_df = run_query(f"""
         SELECT
             DATE_TRUNC('month', EVENT_DATE) as OY,
@@ -1383,7 +1601,17 @@ try:
 
     if not mau_trend_df.empty:
         mau_trend_df["OY"] = pd.to_datetime(mau_trend_df["OY"])
-        mau_trend_df["OY_STR"] = mau_trend_df["OY"].dt.strftime("%Y-%m")
+        mau_trend_df["OY"] = pd.to_datetime(mau_trend_df["OY"])
+
+        MONTHS_UZ = {
+            1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel",
+            5: "May", 6: "Iyun", 7: "Iyul", 8: "Avgust",
+            9: "Sentabr", 10: "Oktabr", 11: "Noyabr", 12: "Dekabr"
+        }
+
+        mau_trend_df["OY_LABEL"] = mau_trend_df["OY"].apply(
+            lambda d: f"{d.year}-{MONTHS_UZ[d.month]}"
+        )
 
         m1, m2, m3 = st.columns(3)
         m1.metric("O'rtacha MAU", f"{int(mau_trend_df['MAU'].mean()):,}")
@@ -1394,13 +1622,14 @@ try:
             alt.Chart(mau_trend_df)
             .mark_bar(color=COLORS["purple"], cornerRadiusTopLeft=6, cornerRadiusTopRight=6, opacity=0.92)
             .encode(
-                x=alt.X("OY_STR:O", title="", axis=alt.Axis(labelAngle=-30, labelFontWeight=600), sort=None),
-                y=alt.Y("MAU:Q", title="", axis=alt.Axis(labelFontWeight=600)),
-                tooltip=[
-                    alt.Tooltip("OY_STR:O", title="Oy"),
+               x=alt.X("OY_LABEL:O", title="", axis=alt.Axis(labelAngle=-30, labelFontWeight=600), sort=None),
+               y=alt.Y("MAU:Q", title="", axis=alt.Axis(labelFontWeight=600)),
+               tooltip=[
+                    alt.Tooltip("OY_LABEL:O", title="Yil-Oy"),
                     alt.Tooltip("MAU:Q", title="MAU", format=","),
                 ],
-            )
+    )
+    .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
         )
         st.altair_chart(mau_chart, use_container_width=True)
@@ -1409,22 +1638,23 @@ try:
 except Exception as e:
     st.error(f"MAU trend xatolik: {e}")
 
+# Mini games trends
 
-# ----------------------------
-# 6) Mini-game trend
-# ----------------------------
 left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
 with left:
-    st.markdown('''<div class="sec-title">🎮 Mini o'yinlar trendi</div><div class="sec-sub">O'yinlar bo'yicha</div>''', unsafe_allow_html=True)
+    st.markdown('''<div class="sec-title">🎮 Mini o'yinlar trendi</div><div class="sec-sub">Tanlangan mini-o'yin va davr bo'yicha o'yinga kirishlar soni</div>''', unsafe_allow_html=True)
 with right:
     m1, m2 = st.columns([1.2, 1], gap="small")
     with m1:
+        st.markdown('<div style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">Davr</div>', unsafe_allow_html=True)
         mg_date_range = st.date_input(
             "Sana oralig'i",
-            value=(datetime.now() - timedelta(days=30), datetime.now()),
+            value=(datetime.now().date() - timedelta(days=30), datetime.now().date()),
             key="mg_date",
+            label_visibility="collapsed"
         )
     with m2:
+        st.markdown('<div style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">Mini o\'yin</div>', unsafe_allow_html=True)
         try:
             mg_list = run_query(f"""
                 SELECT DISTINCT EVENT_JSON:MiniGameName::STRING as MINI_GAME
@@ -1434,15 +1664,20 @@ with right:
             """)
             mg_options = ["Barchasi"] + [get_minigame_name(mg) for mg in mg_list["MINI_GAME"].tolist() if mg]
             mg_original = {get_minigame_name(mg): mg for mg in mg_list["MINI_GAME"].tolist() if mg}
-            selected_mg = st.selectbox("Mini o'yin", mg_options, key="mg_filter")
+            selected_mg = st.selectbox("Mini o'yin", mg_options, key="mg_filter", label_visibility="collapsed")
         except Exception:
             selected_mg = "Barchasi"
             mg_original = {}
 
 if len(mg_date_range) == 2:
     mg_start, mg_end = mg_date_range
+    min_date = datetime(2025, 12, 27).date()
+    if mg_start < min_date:
+        mg_start = min_date
+
     mg_start_str = mg_start.strftime("%Y-%m-%d")
-    mg_end_str = mg_end.strftime("%Y-%m-%d")
+    mg_end_adjusted = mg_end + timedelta(days=1)
+    mg_end_str = mg_end_adjusted.strftime("%Y-%m-%d")
 
     try:
         if selected_mg == "Barchasi":
@@ -1453,7 +1688,7 @@ if len(mg_date_range) == 2:
                 FROM {DB}.ACCOUNT_EVENTS
                 WHERE GAME_ID = {GAME_ID}
                 AND EVENT_NAME = 'playedMiniGameStatus'
-                AND EVENT_TIMESTAMP BETWEEN '{mg_start_str}' AND '{mg_end_str}'
+                AND EVENT_TIMESTAMP >= '{mg_start_str}' AND EVENT_TIMESTAMP < '{mg_end_str}'
                 GROUP BY DATE(EVENT_TIMESTAMP)
                 ORDER BY SANA
             """)
@@ -1467,7 +1702,7 @@ if len(mg_date_range) == 2:
                 WHERE GAME_ID = {GAME_ID}
                 AND EVENT_NAME = 'playedMiniGameStatus'
                 AND EVENT_JSON:MiniGameName::STRING = '{original_name}'
-                AND EVENT_TIMESTAMP BETWEEN '{mg_start_str}' AND '{mg_end_str}'
+                AND EVENT_TIMESTAMP >= '{mg_start_str}' AND EVENT_TIMESTAMP < '{mg_end_str}'
                 GROUP BY DATE(EVENT_TIMESTAMP)
                 ORDER BY SANA
             """)
@@ -1484,7 +1719,7 @@ if len(mg_date_range) == 2:
                     line=False
                 )
                 .encode(
-                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
+                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=5, labelFontWeight=600)),
                     y=alt.Y("OYINLAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                 )
             )
@@ -1510,7 +1745,7 @@ if len(mg_date_range) == 2:
                 .encode(x="SANA:T", y="OYINLAR:Q")
             )
 
-            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), use_container_width=True)
+            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), width="stretch")
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
     except Exception as e:
@@ -1576,7 +1811,7 @@ try:
             )
             .properties(height=290, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
         )
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width="stretch")
     else:
         st.info("Ma'lumotlar mavjud emas")
 except Exception as e:
