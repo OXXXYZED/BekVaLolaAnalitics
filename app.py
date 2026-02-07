@@ -879,7 +879,7 @@ st.markdown(f'''
 
 
 # ----------------------------
-# KPI (4 cards) - TASK 6: Load in parallel for better performance
+# KPI (4 cards)
 # ----------------------------
 # Load KPIs with minimal queries
 try:
@@ -969,34 +969,58 @@ st.markdown(
   <div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico green">👥</div>
-      <div class="kpi-label">Umumiy foydalanuvchilar</div>
+        <div style="font-size: 1.1rem; font-weight: 600; color: #444;">
+            Umumiy foydalanuvchilar
+        </div>
     </div>
-    <div class="kpi-value">{f"{kpi_total_users:,}" if kpi_total_users is not None else "N/A"}</div>
-  </div>
+    <div style="display: flex; flex-direction: column; gap: 0.1rem;">
+        <div style="font-size: 2.2rem; font-weight: 650; color: #1a1a1a; line-height: 1.2;">
+            {f"{kpi_total_users:,}" if kpi_total_users is not None else "N/A"}
+          </div>
+    </div>
+</div>
 
-  <div class="kpi card">
+<div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico blue">📊</div>
-      <div class="kpi-label">Kunlik faol foydalanuvchilar</div>
+        <div style="font-size: 1.1rem; font-weight: 600; color: #444;">
+            Kunlik faol foydalanuvchilar
+        </div>
     </div>
-    <div class="kpi-value">{f"{kpi_dau:,}" if kpi_dau is not None else "N/A"}</div>
-  </div>
+    <div style="display: flex; flex-direction: column; gap: 0.1rem;">
+        <div style="font-size: 2.2rem; font-weight: 650; color: #1a1a1a; line-height: 1.2;">
+            {f"{kpi_dau:,}" if kpi_dau is not None else "N/A"}
+          </div>
+    </div>
+</div>
 
-  <div class="kpi card">
+<div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico purple">📅</div>
-      <div class="kpi-label">Oylik faol foydalanuvchilar</div>
+        <div style="font-size: 1.1rem; font-weight: 600; color: #444;">
+            Oylik faol foydalanuvchilar
+        </div>
     </div>
-    <div class="kpi-value">{f"{kpi_mau:,}" if kpi_mau is not None else "N/A"}</div>
-  </div>
+    <div style="display: flex; flex-direction: column; gap: 0.1rem;">
+        <div style="font-size: 2.2rem; font-weight: 650; color: #1a1a1a; line-height: 1.2;">
+            {f"{kpi_mau:,}" if kpi_mau is not None else "N/A"}
+          </div>
+    </div>
+</div>
 
-  <div class="kpi card">
+<div class="kpi card">
     <div class="kpi-head">
       <div class="kpi-ico">📈</div>
-      <div class="kpi-label">O'yin seanslari soni</div>
+        <div style="font-size: 1.1rem; font-weight: 600; color: #444;">
+            O'yin seanslari soni
+        </div>
     </div>
-    <div class="kpi-value">{f"{kpi_sessions:,}" if kpi_sessions is not None else "N/A"}</div>
-  </div>
+    <div style="display: flex; flex-direction: column; gap: 0.1rem;">
+        <div style="font-size: 2.2rem; font-weight: 650; color: #1a1a1a; line-height: 1.2;">
+            {f"{kpi_sessions:,}" if kpi_sessions is not None else "N/A"}
+          </div>
+    </div>
+</div>
 
   <div class="kpi card">
     <div class="kpi-head">
@@ -1142,18 +1166,41 @@ st.markdown(
 
 try:
     versions_df = run_query(f"""
-    SELECT
-        COALESCE(CLIENT_VERSION, 'UNKNOWN') AS CLIENT_VERSION,
-        COUNT(DISTINCT USER_ID) AS USERS
-    FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-    WHERE GAME_ID = {GAME_ID}
-      AND EVENT_DATE >= '2025-12-27'
-    GROUP BY COALESCE(CLIENT_VERSION, 'UNKNOWN')
-    ORDER BY
-      CASE WHEN COALESCE(CLIENT_VERSION, 'UNKNOWN') = 'UNKNOWN' THEN 1 ELSE 0 END,
-      TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 1)),
-      TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 2)),
-      TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 3))
+    WITH version_data AS (
+        SELECT
+            COALESCE(CLIENT_VERSION, 'UNKNOWN') AS CLIENT_VERSION,
+            COUNT(DISTINCT USER_ID) AS USERS,
+            TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 1)) AS major,
+            TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 2)) AS minor,
+            TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 3)) AS patch
+        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+        WHERE GAME_ID = {GAME_ID}
+          AND EVENT_DATE >= '2025-12-27'
+          AND COALESCE(CLIENT_VERSION, 'UNKNOWN') != 'UNKNOWN'
+        GROUP BY CLIENT_VERSION
+    ),
+    latest_version AS (
+        SELECT CLIENT_VERSION
+        FROM version_data
+        ORDER BY major DESC, minor DESC, patch DESC
+        LIMIT 1
+    )
+    SELECT 
+        CASE 
+            WHEN v.CLIENT_VERSION = l.CLIENT_VERSION THEN v.CLIENT_VERSION
+            ELSE '1.0.0'
+        END AS CLIENT_VERSION,
+        SUM(v.USERS) AS USERS
+    FROM version_data v
+    CROSS JOIN latest_version l
+    GROUP BY 
+        CASE 
+            WHEN v.CLIENT_VERSION = l.CLIENT_VERSION THEN v.CLIENT_VERSION
+            ELSE '1.0.0'
+        END
+    ORDER BY 
+        CASE WHEN CLIENT_VERSION = '1.0.0' THEN 0 ELSE 1 END,
+        CLIENT_VERSION ASC
 """)
 
 
@@ -1737,7 +1784,6 @@ if len(mg_date_range) == 2:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
     except Exception as e:
         st.error(f"Mini oyinlar trendi xatolik: {e}")
-
 
 # ----------------------------
 # 7) Top 5 mini-games
