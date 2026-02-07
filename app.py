@@ -758,9 +758,6 @@ ul[role="listbox"] li:focus,
   }}
 }}
 
-.chart-title {{
-  margin-bottom: 4px !important;
-}}
 
 </style>
 """,
@@ -1087,7 +1084,7 @@ try:
                         alt.Tooltip("PERCENT:Q", title="Ulush", format=".1f"),
                     ],
                 )
-                .properties(height=CHART_H, padding={"top": 6, "left": 8, "right": 8, "bottom": 8})
+                .properties(height=CHART_H, padding={"top": 18, "left": 8, "right": 8, "bottom": 18})
             )
             st.altair_chart(donut, width="stretch")
 
@@ -1135,7 +1132,7 @@ st.markdown(
 <div class="sec-row">
   <div>
     <div class="sec-title">🧩 Versiyalar</div>
-    <div class="sec-sub">O'yin versiyasi bo‘yicha foydalanuvchilar taqsimoti</div>
+    <div class="sec-sub">O'yin versiyasi bo'yicha foydalanuvchilar taqsimoti</div>
   </div>
   <div></div>
 </div>
@@ -1145,89 +1142,78 @@ st.markdown(
 
 try:
     versions_df = run_query(f"""
-        SELECT
-            COALESCE(CLIENT_VERSION, 'Noma''lum') AS CLIENT_VERSION,
-            COUNT(DISTINCT USER_ID) AS USERS
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        AND EVENT_DATE >= '2025-12-27'
-        GROUP BY COALESCE(CLIENT_VERSION, 'Noma''lum')
-        ORDER BY USERS DESC
-    """)
+    SELECT
+        COALESCE(CLIENT_VERSION, 'UNKNOWN') AS CLIENT_VERSION,
+        COUNT(DISTINCT USER_ID) AS USERS
+    FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
+    WHERE GAME_ID = {GAME_ID}
+      AND EVENT_DATE >= '2025-12-27'
+    GROUP BY COALESCE(CLIENT_VERSION, 'UNKNOWN')
+    ORDER BY
+      CASE WHEN COALESCE(CLIENT_VERSION, 'UNKNOWN') = 'UNKNOWN' THEN 1 ELSE 0 END,
+      TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 1)),
+      TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 2)),
+      TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 3))
+""")
+
 
     if not versions_df.empty:
-        total_v = int(versions_df["USERS"].sum())
-        versions_df["PERCENT"] = (versions_df["USERS"] / total_v * 100).round(1)
+        # UNKNOWN ni hisobga olmaymiz (umuman ko'rsatmaymiz)
+        known_rows = versions_df[versions_df["CLIENT_VERSION"] != "UNKNOWN"]
 
-        # Top N + Boshqalar (pie chiroyli ko‘rinishi uchun)
-        TOP_N = 8
-        if len(versions_df) > TOP_N:
-            top_df = versions_df.head(TOP_N).copy()
-            other_users = int(versions_df["USERS"].iloc[TOP_N:].sum())
-            other_percent = round(other_users / total_v * 100, 1)
+        if known_rows.empty:
+            st.info("Ma'lumotlar mavjud emas")
+        else:
+            # Faqat eng kichik (first) va eng katta (last) versiya
+            first_version = known_rows.iloc[0:1].copy()
+            last_version  = known_rows.iloc[-1:].copy()
 
-            top_df = pd.concat(
-                [
-                    top_df,
-                    pd.DataFrame([{
-                        "CLIENT_VERSION": "Boshqalar",
-                        "USERS": other_users,
-                        "PERCENT": other_percent
-                    }])
-                ],
-                ignore_index=True,
-            )
-            versions_df = top_df
+            # UI chiroyli bo‘lishi uchun avval katta, keyin kichik
+            versions_df = pd.concat([last_version, first_version], ignore_index=True)
 
-        # ✅ 1) Ranglar: chart + legend uchun bitta mapping
-        palette = [
-            "#2563EB", "#7C3AED", "#16A34A", "#F59E0B",
-            "#EF4444", "#06B6D4", "#F97316", "#0EA5E9",
-            "#A855F7", "#22C55E", "#EAB308", "#FB7185",
-        ]
+            # JAMI = faqat shu 2 ta versiyaning userlari yig'indisi
+            total_v = int(versions_df["USERS"].sum())
 
-        domain = versions_df["CLIENT_VERSION"].tolist()
+            # Percent
+            versions_df["PERCENT"] = (versions_df["USERS"] / total_v * 100).round(1)
 
-        # "Boshqalar" va "Noma'lum" ni kulrang qilib qo'yamiz
-        fixed = {
-            "Boshqalar": COLORS["other"],
-            "Noma'lum": COLORS["other"],
-        }
+            # Ranglar
+            palette = [
+                "#2563EB", "#7C3AED", "#16A34A", "#F59E0B",
+                "#EF4444", "#06B6D4", "#F97316", "#0EA5E9",
+                "#A855F7", "#22C55E", "#EAB308", "#FB7185",
+            ]
 
-        # qolganlariga palette’dan rang taqsimlaymiz
-        color_map = {}
-        pi = 0
-        for v in domain:
-            if v in fixed:
-                color_map[v] = fixed[v]
-            else:
-                color_map[v] = palette[pi % len(palette)]
-                pi += 1
+            domain = versions_df["CLIENT_VERSION"].tolist()
 
-        scale = alt.Scale(domain=domain, range=[color_map[v] for v in domain])
+            color_map = {}
+            for i, v in enumerate(domain):
+                color_map[v] = palette[i % len(palette)]
 
-        CHART_H = 300
-        c_chart, c_nums = st.columns([1.25, 0.85], gap="large", vertical_alignment="center")
+            scale = alt.Scale(domain=domain, range=[color_map[v] for v in domain])
 
-        with c_chart:
-            pie = (
-                alt.Chart(versions_df)
-                .mark_arc(innerRadius=118, outerRadius=150, opacity=0.92)
-                .encode(
-                    theta=alt.Theta(field="USERS", type="quantitative"),
-                    color=alt.Color("CLIENT_VERSION:N", scale=scale, legend=None),
-                    tooltip=[
-                        alt.Tooltip("CLIENT_VERSION:N", title="Versiya"),
-                        alt.Tooltip("USERS:Q", title="Foydalanuvchilar", format=","),
-                        alt.Tooltip("PERCENT:Q", title="Ulush", format=".1f"),
-                    ],
+            CHART_H = 300
+            c_chart, c_nums = st.columns([1.25, 0.85], gap="large", vertical_alignment="center")
+
+            with c_chart:
+                pie = (
+                    alt.Chart(versions_df)
+                    .mark_arc(innerRadius=118, outerRadius=150, opacity=0.92)
+                    .encode(
+                        theta=alt.Theta(field="USERS", type="quantitative"),
+                        color=alt.Color("CLIENT_VERSION:N", scale=scale, legend=None),
+                        tooltip=[
+                            alt.Tooltip("CLIENT_VERSION:N", title="Versiya"),
+                            alt.Tooltip("USERS:Q", title="Foydalanuvchilar", format=","),
+                            alt.Tooltip("PERCENT:Q", title="Ulush", format=".1f"),
+                        ],
+                    )
+                    .properties(height=CHART_H, padding={"top": 18, "left": 8, "right": 8, "bottom": 18})
                 )
-                .properties(height=CHART_H, padding={"top": 6, "left": 8, "right": 8, "bottom": 8})
-            )
-            st.altair_chart(pie, width="stretch")
+                st.altair_chart(pie, width="stretch")
 
-        with c_nums:
-            legend_html = f'''
+            with c_nums:
+                legend_html = f'''
 <div class="stat-row">
   <div>
     <div class="stat-left"><span class="dot" style="background:{COLORS["accent"]};"></span>
@@ -1237,13 +1223,13 @@ try:
   <div class="stat-right">{total_v:,}</div>
 </div>'''
 
-            for _, r in versions_df.iterrows():
-                v = r["CLIENT_VERSION"]
-                u = int(r["USERS"])
-                pr = float(r["PERCENT"])
-                dot_color = color_map.get(v, COLORS["other"])
+                for _, r in versions_df.iterrows():
+                    v = r["CLIENT_VERSION"]
+                    u = int(r["USERS"])
+                    pr = float(r["PERCENT"])
+                    dot_color = color_map.get(v, COLORS["other"])
 
-                legend_html += f'''
+                    legend_html += f'''
 <div class="stat-row">
   <div>
     <div class="stat-left"><span class="dot" style="background:{dot_color};"></span>
@@ -1254,13 +1240,14 @@ try:
   <div class="stat-right">{u:,}</div>
 </div>'''
 
-            st.markdown(
-                f'<div class="legend-card card" style="background: #FFFFFF; border: 1px solid rgba(15,23,42,0.14); border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(15,23,42,0.06);">{legend_html}</div>',
-                unsafe_allow_html=True,
-            )
+                st.markdown(
+                    f'<div class="legend-card card" style="background: #FFFFFF; border: 1px solid rgba(15,23,42,0.14); border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(15,23,42,0.06);">{legend_html}</div>',
+                    unsafe_allow_html=True,
+                )
 
     else:
         st.info("Ma'lumotlar mavjud emas")
+
 except Exception as e:
     st.error(f"Versiyalar xatolik: {e}")
 
@@ -1364,7 +1351,7 @@ if len(date_range) == 2:
 # ----------------------------
 left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
 with left:
-    st.markdown('''<div class="sec-title">📈 O'yin seanslari</div><div class="sec-sub">Faollik ko'rinishi</div>''', unsafe_allow_html=True)
+    st.markdown('''<div class="sec-title">📈 O'yin senaslari soni</div><div class="sec-sub">Faollik ko'rinishi</div>''', unsafe_allow_html=True)
 with right:
     s1, s2 = st.columns([0.9, 1.1], gap="small")
     with s1:
@@ -1403,7 +1390,7 @@ try:
             sessions_df["SOAT_LABEL"] = sessions_df["SOAT"].apply(lambda x: f"{x:02d}:00")
 
             m1, m2 = st.columns(2)
-            m1.metric("Hodisalar", f"{int(sessions_df['HODISALAR'].sum()):,}")
+            m1.metric("Seanslar", f"{int(sessions_df['HODISALAR'].sum()):,}")
             m2.metric("Faol foydalanuvchilar", f"{int(sessions_df['FOYDALANUVCHILAR'].sum()):,}")
 
             chart = (
@@ -1414,7 +1401,7 @@ try:
                     y=alt.Y("HODISALAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
                     tooltip=[
                         alt.Tooltip("SOAT_LABEL:N", title="Soat"),
-                        alt.Tooltip("HODISALAR:Q", title="Hodisalar", format=","),
+                        alt.Tooltip("HODISALAR:Q", title="Seanslar", format=","),
                         alt.Tooltip("FOYDALANUVCHILAR:Q", title="Foydalanuvchilar", format=","),
                     ],
                 )
@@ -1450,7 +1437,7 @@ try:
             m1, m2, m3 = st.columns(3)
             m1.metric("Jami", f"{int(sessions_df['SESSIYALAR'].sum()):,}")
             m2.metric("O'rtacha kunlik", f"{int(sessions_df['SESSIYALAR'].mean()):,}")
-            m3.metric("O'rtacha o'yin davomiyligi (daq)", f"{round(float(sessions_df['ORTACHA_DAVOMIYLIK'].mean()), 1)}")
+            m3.metric("O'rtacha o'yin davomiyligi", f"{round(float(sessions_df['ORTACHA_DAVOMIYLIK'].mean()), 1)} daq")
 
             sessions_df["SANA"] = pd.to_datetime(sessions_df["SANA"])
             sessions_df["SANA_STR"] = sessions_df["SANA"].dt.strftime("%Y-%m-%d")
