@@ -870,7 +870,6 @@ except Exception:
 
 
 
-
 st.markdown(f'''
 <div class="header">
     <img src="data:image/png;base64,{LOGO_BASE64}" style="height:60px;width:auto;" />
