@@ -41,10 +41,18 @@ TODAY = date.today()
 RELEASE_DATE_STR = RELEASE_DATE.strftime("%Y-%m-%d")
 TODAY_STR = TODAY.strftime("%Y-%m-%d")
 
-# Ensure service account path is set (from .env)
-if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") and not os.path.isabs(os.getenv("GOOGLE_APPLICATION_CREDENTIALS")):
-    # Resolve relative path to project root
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(Path(__file__).parent / os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+# Handle credentials path (Cloud Run / Firebase Hosting blocks env keys starting with GOOGLE_)
+# Allowed alternatives:
+# - GA4_CREDENTIALS_PATH: absolute or relative path to JSON key
+# - GOOGLE_APPLICATION_CREDENTIALS: standard env (works locally)
+cred_env = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+alt_cred = os.getenv("GA4_CREDENTIALS_PATH")
+if not cred_env and alt_cred:
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = alt_cred
+    cred_env = alt_cred
+
+if cred_env and not os.path.isabs(cred_env):
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(Path(__file__).parent / cred_env)
 
 # ----------------------------
 # Theme
