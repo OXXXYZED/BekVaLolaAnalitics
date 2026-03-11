@@ -1,11 +1,24 @@
-import streamlit as st
-import pandas as pd
-import altair as alt
-from datetime import datetime, timedelta
-from decimal import Decimal
-import snowflake.connector
+import os
 import base64
 from pathlib import Path
+from datetime import datetime, timedelta, date
+
+import altair as alt
+import pandas as pd
+import streamlit as st
+from dotenv import load_dotenv
+from typing import Optional, List
+from google.analytics.data_v1beta import BetaAnalyticsDataClient
+from google.analytics.data_v1beta.types import (
+    DateRange,
+    Dimension,
+    Metric,
+    RunReportRequest,
+    FilterExpression,
+    Filter,
+    FilterExpressionList,
+    OrderBy,
+)
 
 # ----------------------------
 # Page
@@ -18,6 +31,20 @@ st.set_page_config(
 )
 
 alt.data_transformers.disable_max_rows()
+
+load_dotenv()
+
+# GA4 / Firebase Analytics config
+PROPERTY_ID = os.getenv("GA4_PROPERTY_ID", "")
+RELEASE_DATE = date(2025, 12, 27)
+TODAY = date.today()
+RELEASE_DATE_STR = RELEASE_DATE.strftime("%Y-%m-%d")
+TODAY_STR = TODAY.strftime("%Y-%m-%d")
+
+# Ensure service account path is set (from .env)
+if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") and not os.path.isabs(os.getenv("GOOGLE_APPLICATION_CREDENTIALS")):
+    # Resolve relative path to project root
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(Path(__file__).parent / os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
 
 # ----------------------------
 # Theme
@@ -45,9 +72,15 @@ COLORS = {
 
 # Load local logo as base64
 def get_logo_base64():
-    logo_path = Path(__file__).parent / "images" / "Beklola.png"
-    with open(logo_path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
+    for name in ["Beklola.png", "beklola.png"]:
+        logo_path = Path(__file__).parent / "images" / name
+        if logo_path.exists():
+            try:
+                with open(logo_path, "rb") as f:
+                    return base64.b64encode(f.read()).decode()
+            except Exception:
+                continue
+    return ""
 
 LOGO_BASE64 = get_logo_base64() 
 
@@ -78,6 +111,43 @@ def _clean_light_theme():
 alt.themes.register("clean_light", _clean_light_theme)
 alt.theme.enable("clean_light")
 
+# ----------------------------
+# GA4 helpers
+# ----------------------------
+@st.cache_resource(show_spinner=False)
+def ga4_client() -> BetaAnalyticsDataClient:
+    return BetaAnalyticsDataClient()
+
+
+def run_report(
+    dimensions: List[str],
+    metrics: List[str],
+    start: str,
+    end: str,
+    limit: Optional[int] = None,
+    dimension_filter: Optional[FilterExpression] = None,
+    order_by: Optional[List[OrderBy]] = None,
+):
+    request = RunReportRequest(
+        property=f"properties/{PROPERTY_ID}",
+        dimensions=[Dimension(name=d) for d in dimensions],
+        metrics=[Metric(name=m) for m in metrics],
+        date_ranges=[DateRange(start_date=start, end_date=end)],
+        limit=limit,
+        dimension_filter=dimension_filter,
+        order_bys=order_by or [],
+    )
+    resp = ga4_client().run_report(request)
+    rows = []
+    for r in resp.rows:
+        row = {}
+        for i, d in enumerate(dimensions):
+            row[d] = r.dimension_values[i].value
+        for j, m in enumerate(metrics):
+            row[m] = float(r.metric_values[j].value)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
 
 # ----------------------------
 # CSS theme
@@ -100,6 +170,16 @@ html, body, [class*="css"] {{
   color: {COLORS["text"]} !important;
   font-weight: 400 !important;
   color-scheme: light !important;
+}}
+
+/* Text selection highlight */
+*::selection {{
+  background: rgba(37,99,235,0.20) !important;
+  color: #0F172A !important;
+}}
+*::-moz-selection {{
+  background: rgba(37,99,235,0.20) !important;
+  color: #0F172A !important;
 }}
 
 /* Override dark mode preference */
@@ -775,10 +855,10 @@ ul[role="listbox"] li:focus,
 
 
 # ----------------------------
-# Secrets
+# GA4 property check
 # ----------------------------
-if "snowflake" not in st.secrets:
-    st.error("Snowflake credentials topilmadi. Iltimos, secrets ni sozlang.")
+if not PROPERTY_ID:
+    st.error("GA4_PROPERTY_ID topilmadi. .env fayliga qo'shing yoki qo'lda kiriting.")
     st.stop()
 
 # ----------------------------
@@ -810,77 +890,50 @@ def get_minigame_name(name):
     return MINIGAME_NAMES.get(name, name)
 
 # ----------------------------
-# Snowflake connection with auto-reconnect
+# GA4 / Firebase derived meta
 # ----------------------------
-@st.cache_resource(ttl=2700)  # 45 minutes TTL (Snowflake tokens expire after ~1 hour)
-def get_connection():
-    return snowflake.connector.connect(
-        user=st.secrets["snowflake"]["user"],
-        password=st.secrets["snowflake"]["password"],
-        account=st.secrets["snowflake"]["account"],
-        warehouse=st.secrets["snowflake"]["warehouse"],
-        database=st.secrets["snowflake"]["database"],
-        schema=st.secrets["snowflake"]["schema"],
-    )
-
-# Remove "running query" popup - removed @st.cache_data spinner
-def _execute_query(query: str) -> pd.DataFrame:
-    """Execute query and return DataFrame."""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(query)
-    columns = [desc[0] for desc in cur.description]
-    data = cur.fetchall()
-    df = pd.DataFrame(data, columns=columns)
-
-    for col in df.columns:
-        if df[col].dtype == object:
-            if df[col].apply(lambda x: isinstance(x, Decimal)).any():
-                df[col] = df[col].apply(lambda x: float(x) if isinstance(x, Decimal) else x)
-            try:
-                numeric_col = pd.to_numeric(df[col], errors="coerce")
-                if not numeric_col.isna().all():
-                    df[col] = numeric_col
-            except Exception:
-                pass
-    return df
-
-# Performance boost - increased TTL and added show_spinner=False
-@st.cache_data(ttl=600, show_spinner=False)  # 10 minutes cache, no spinner
-def run_query(query: str) -> pd.DataFrame:
+def latest_event_date() -> str:
     try:
-        return _execute_query(query)
-    except snowflake.connector.errors.ProgrammingError as e:
-        # Check if token expired (error code 390114)
-        if "390114" in str(e) or "Authentication token has expired" in str(e):
-            # Clear cached connection and retry
-            get_connection.clear()
-            return _execute_query(query)
-        raise
+        df = run_report(
+            ["date"],
+            ["eventCount"],
+            RELEASE_DATE.strftime("%Y-%m-%d"),
+            TODAY.strftime("%Y-%m-%d"),
+            order_by=[OrderBy(dimension=OrderBy.DimensionOrderBy(dimension_name="date"), desc=True)],
+            limit=1,
+        )
+        if df.empty:
+            return "N/A"
+        return pd.to_datetime(df["date"][0]).strftime("%d.%m.%Y")
+    except Exception:
+        return "N/A"
 
-GAME_ID = 181330318
-DB = "UNITY_ANALYTICS_GCP_US_CENTRAL1_UNITY_ANALYTICS_PDA.SHARES"
+
+def latest_app_version() -> str:
+    try:
+        df = run_report(
+            ["appVersion"],
+            ["activeUsers"],
+            (TODAY - timedelta(days=30)).strftime("%Y-%m-%d"),
+            TODAY.strftime("%Y-%m-%d"),
+            order_by=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="activeUsers"), desc=True)],
+            limit=1,
+        )
+        if df.empty:
+            return "N/A"
+        return str(df["appVersion"][0])
+    except Exception:
+        return "N/A"
 
 
-# Get current timestamp for last update
-last_update_date = "15.01.2026"
-try:
-    last_ver_df = run_query(f"""
-        SELECT COALESCE(CLIENT_VERSION, 'Noma''lum') AS LAST_UPDATE_VERSION
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-          AND CLIENT_VERSION IS NOT NULL
-        QUALIFY ROW_NUMBER() OVER (ORDER BY EVENT_DATE DESC) = 1
-    """)
-    last_update_version = last_ver_df["LAST_UPDATE_VERSION"][0] if not last_ver_df.empty else "N/A"
-except Exception:
-    last_update_version = "N/A"
+last_update_date = latest_event_date()
+last_update_version = latest_app_version()
 
 
 
 st.markdown(f'''
 <div class="header">
-    <img src="data:image/png;base64,{LOGO_BASE64}" style="height:60px;width:auto;" />
+    {f'<img src="data:image/png;base64,{LOGO_BASE64}" style="height:60px;width:auto;" />' if LOGO_BASE64 else '<div class="h-title">Bek va Lola Analytics</div>'}
 </div>
 ''', unsafe_allow_html=True)
 
@@ -888,87 +941,38 @@ st.markdown(f'''
 # ----------------------------
 # KPI (4 cards)
 # ----------------------------
-# Load KPIs with minimal queries
-try:
-    total_users = run_query(f"""
-        SELECT COUNT(DISTINCT USER_ID) as TOTAL
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-    """)
-    kpi_total_users = int(total_users["TOTAL"][0])
-except Exception:
-    kpi_total_users = None
-
 # Defaults for initial view
 default_start = datetime.now() - timedelta(days=30)
 default_end = datetime.now()
 
 # DAU - Daily Active Users (yesterday, as today may be incomplete)
 try:
-    yesterday = datetime.now() - timedelta(days=1)
-    dau_df = run_query(f"""
-        SELECT COUNT(DISTINCT USER_ID) as DAU
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        AND EVENT_DATE = '{yesterday.strftime("%Y-%m-%d")}'
-    """)
-    kpi_dau = int(dau_df["DAU"][0])
+    total_df = run_report([], ["activeUsers"], RELEASE_DATE_STR, TODAY_STR)
+    kpi_total_users = int(total_df["activeUsers"][0]) if not total_df.empty else None
+except Exception:
+    kpi_total_users = None
+
+try:
+    yesterday = TODAY - timedelta(days=1)
+    y_str = yesterday.strftime("%Y-%m-%d")
+    dau_df = run_report(["date"], ["activeUsers"], y_str, y_str)
+    kpi_dau = int(dau_df["activeUsers"].sum()) if not dau_df.empty else None
 except Exception:
     kpi_dau = None
 
-# MAU - Monthly Active Users (last 30 days)
 try:
-    mau_end = datetime.now()
-    mau_start = mau_end - timedelta(days=30)
-    mau_df = run_query(f"""
-        SELECT COUNT(DISTINCT USER_ID) as MAU
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        AND EVENT_DATE BETWEEN '{mau_start.strftime("%Y-%m-%d")}' AND '{mau_end.strftime("%Y-%m-%d")}'
-    """)
-    kpi_mau = int(mau_df["MAU"][0])
+    mau_start = (TODAY - timedelta(days=30)).strftime("%Y-%m-%d")
+    mau_df = run_report([], ["activeUsers"], mau_start, TODAY_STR)
+    kpi_mau = int(mau_df["activeUsers"][0]) if not mau_df.empty else None
 except Exception:
     kpi_mau = None
 
 try:
-    end_dt = datetime.now()
-    start_dt = end_dt - timedelta(days=7)
-    sess_kpi_df = run_query(f"""
-        SELECT COUNT(DISTINCT SESSION_ID) as TOTAL_SESS
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        AND EVENT_DATE BETWEEN '{start_dt.strftime("%Y-%m-%d")}' AND '{end_dt.strftime("%Y-%m-%d")}'
-    """)
-    kpi_sessions = int(sess_kpi_df["TOTAL_SESS"][0])
+    sess_start = (TODAY - timedelta(days=7)).strftime("%Y-%m-%d")
+    sess_df = run_report([], ["sessions"], sess_start, TODAY_STR)
+    kpi_sessions = int(sess_df["sessions"][0]) if not sess_df.empty else None
 except Exception:
     kpi_sessions = None
-
-# DAU - Daily Active Users (yesterday, as today may be incomplete)
-try:
-    yesterday = datetime.now() - timedelta(days=1)
-    dau_df = run_query(f"""
-        SELECT COUNT(DISTINCT USER_ID) as DAU
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        AND EVENT_DATE = '{yesterday.strftime("%Y-%m-%d")}'
-    """)
-    kpi_dau = int(dau_df["DAU"][0])
-except Exception:
-    kpi_dau = None
-
-# MAU - Monthly Active Users (last 30 days)
-try:
-    mau_end = datetime.now()
-    mau_start = mau_end - timedelta(days=30)
-    mau_df = run_query(f"""
-        SELECT COUNT(DISTINCT USER_ID) as MAU
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        AND EVENT_DATE BETWEEN '{mau_start.strftime("%Y-%m-%d")}' AND '{mau_end.strftime("%Y-%m-%d")}'
-    """)
-    kpi_mau = int(mau_df["MAU"][0])
-except Exception:
-    kpi_mau = None
 
 st.markdown(
     f"""
@@ -1067,27 +1071,18 @@ st.markdown(
 )
 
 try:
-    platform_df = run_query(f"""
-        SELECT
-            PLATFORM_GROUP AS PLATFORM,
-            SUM(USERS) AS USERS
-        FROM (
-            SELECT
-                CASE
-                    WHEN PLATFORM = 'ANDROID' THEN 'Android'
-                    WHEN PLATFORM = 'IOS' THEN 'iOS'
-                    ELSE 'Boshqalar'
-                END AS PLATFORM_GROUP,
-                COUNT(DISTINCT USER_ID) AS USERS
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-            WHERE GAME_ID = {GAME_ID}
-            GROUP BY PLATFORM
-        )
-        GROUP BY PLATFORM_GROUP
-        ORDER BY USERS DESC
-    """)
+    platform_df = run_report(
+        ["operatingSystem"],
+        ["activeUsers"],
+        RELEASE_DATE_STR,
+        TODAY_STR,
+        order_by=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="activeUsers"), desc=True)],
+    )
 
     if not platform_df.empty:
+        platform_df = platform_df.rename(columns={"operatingSystem": "PLATFORM", "activeUsers": "USERS"})
+        platform_df["PLATFORM"] = platform_df["PLATFORM"].replace({"ANDROID": "Android", "IOS": "iOS"})
+        platform_df["PLATFORM"] = platform_df["PLATFORM"].apply(lambda x: x if x in ["Android", "iOS"] else "Boshqalar")
         total = int(platform_df["USERS"].sum())
         platform_df["PERCENT"] = (platform_df["USERS"] / total * 100).round(1)
 
@@ -1117,7 +1112,7 @@ try:
                 )
                 .properties(height=CHART_H, padding={"top": 18, "left": 8, "right": 8, "bottom": 18})
             )
-            st.altair_chart(donut, width="stretch")
+            st.altair_chart(donut, use_container_width=True)
 
         with c_nums:
             # Build legend HTML as single block
@@ -1172,102 +1167,52 @@ st.markdown(
 )
 
 try:
-    versions_df = run_query(f"""
-    WITH version_data AS (
-        SELECT
-            COALESCE(CLIENT_VERSION, 'UNKNOWN') AS CLIENT_VERSION,
-            COUNT(DISTINCT USER_ID) AS USERS,
-            TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 1)) AS major,
-            TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 2)) AS minor,
-            TRY_TO_NUMBER(SPLIT_PART(CLIENT_VERSION, '.', 3)) AS patch
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-          AND EVENT_DATE >= '2025-12-27'
-          AND COALESCE(CLIENT_VERSION, 'UNKNOWN') != 'UNKNOWN'
-        GROUP BY CLIENT_VERSION
-    ),
-    latest_version AS (
-        SELECT CLIENT_VERSION
-        FROM version_data
-        ORDER BY major DESC, minor DESC, patch DESC
-        LIMIT 1
+    versions_df = run_report(
+        ["appVersion"],
+        ["activeUsers"],
+        (TODAY - timedelta(days=60)).strftime("%Y-%m-%d"),
+        TODAY_STR,
+        order_by=[OrderBy(metric=OrderBy.MetricOrderBy(metric_name="activeUsers"), desc=True)],
+        limit=12,
     )
-    SELECT 
-        CASE 
-            WHEN v.CLIENT_VERSION = l.CLIENT_VERSION THEN v.CLIENT_VERSION
-            ELSE '1.0.0'
-        END AS CLIENT_VERSION,
-        SUM(v.USERS) AS USERS
-    FROM version_data v
-    CROSS JOIN latest_version l
-    GROUP BY 
-        CASE 
-            WHEN v.CLIENT_VERSION = l.CLIENT_VERSION THEN v.CLIENT_VERSION
-            ELSE '1.0.0'
-        END
-    ORDER BY 
-        CASE WHEN CLIENT_VERSION = '1.0.0' THEN 0 ELSE 1 END,
-        CLIENT_VERSION ASC
-""")
-
 
     if not versions_df.empty:
-        # UNKNOWN ni hisobga olmaymiz (umuman ko'rsatmaymiz)
-        known_rows = versions_df[versions_df["CLIENT_VERSION"] != "UNKNOWN"]
+        versions_df = versions_df.rename(columns={"appVersion": "CLIENT_VERSION", "activeUsers": "USERS"})
+        versions_df = versions_df[versions_df["CLIENT_VERSION"].notna()]
+        total_v = int(versions_df["USERS"].sum())
+        versions_df["PERCENT"] = (versions_df["USERS"] / total_v * 100).round(1)
 
-        if known_rows.empty:
-            st.info("Ma'lumotlar mavjud emas")
-        else:
-            # Faqat eng kichik (first) va eng katta (last) versiya
-            first_version = known_rows.iloc[0:1].copy()
-            last_version  = known_rows.iloc[-1:].copy()
+        palette = [
+            "#2563EB", "#7C3AED", "#16A34A", "#F59E0B",
+            "#EF4444", "#06B6D4", "#F97316", "#0EA5E9",
+            "#A855F7", "#22C55E", "#EAB308", "#FB7185",
+        ]
+        domain = versions_df["CLIENT_VERSION"].tolist()
+        color_map = {v: palette[i % len(palette)] for i, v in enumerate(domain)}
+        scale = alt.Scale(domain=domain, range=[color_map[v] for v in domain])
 
-            # UI chiroyli bo‘lishi uchun avval katta, keyin kichik
-            versions_df = pd.concat([last_version, first_version], ignore_index=True)
+        CHART_H = 300
+        c_chart, c_nums = st.columns([1.25, 0.85], gap="large", vertical_alignment="center")
 
-            # JAMI = faqat shu 2 ta versiyaning userlari yig'indisi
-            total_v = int(versions_df["USERS"].sum())
-
-            # Percent
-            versions_df["PERCENT"] = (versions_df["USERS"] / total_v * 100).round(1)
-
-            # Ranglar
-            palette = [
-                "#2563EB", "#7C3AED", "#16A34A", "#F59E0B",
-                "#EF4444", "#06B6D4", "#F97316", "#0EA5E9",
-                "#A855F7", "#22C55E", "#EAB308", "#FB7185",
-            ]
-
-            domain = versions_df["CLIENT_VERSION"].tolist()
-
-            color_map = {}
-            for i, v in enumerate(domain):
-                color_map[v] = palette[i % len(palette)]
-
-            scale = alt.Scale(domain=domain, range=[color_map[v] for v in domain])
-
-            CHART_H = 300
-            c_chart, c_nums = st.columns([1.25, 0.85], gap="large", vertical_alignment="center")
-
-            with c_chart:
-                pie = (
-                    alt.Chart(versions_df)
-                    .mark_arc(innerRadius=118, outerRadius=150, opacity=0.92)
-                    .encode(
-                        theta=alt.Theta(field="USERS", type="quantitative"),
-                        color=alt.Color("CLIENT_VERSION:N", scale=scale, legend=None),
-                        tooltip=[
-                            alt.Tooltip("CLIENT_VERSION:N", title="Versiya"),
-                            alt.Tooltip("USERS:Q", title="Foydalanuvchilar", format=","),
-                            alt.Tooltip("PERCENT:Q", title="Ulush", format=".1f"),
-                        ],
-                    )
-                    .properties(height=CHART_H, padding={"top": 18, "left": 8, "right": 8, "bottom": 18})
+        with c_chart:
+            pie = (
+                alt.Chart(versions_df)
+                .mark_arc(innerRadius=118, outerRadius=150, opacity=0.92)
+                .encode(
+                    theta=alt.Theta(field="USERS", type="quantitative"),
+                    color=alt.Color("CLIENT_VERSION:N", scale=scale, legend=None),
+                    tooltip=[
+                        alt.Tooltip("CLIENT_VERSION:N", title="Versiya"),
+                        alt.Tooltip("USERS:Q", title="Foydalanuvchilar", format=","),
+                        alt.Tooltip("PERCENT:Q", title="Ulush", format=".1f"),
+                    ],
                 )
-                st.altair_chart(pie, width="stretch")
+                .properties(height=CHART_H, padding={"top": 18, "left": 8, "right": 8, "bottom": 18})
+            )
+            st.altair_chart(pie, use_container_width=True)
 
-            with c_nums:
-                legend_html = f'''
+        with c_nums:
+            legend_html = f'''
 <div class="stat-row">
   <div>
     <div class="stat-left"><span class="dot" style="background:{COLORS["accent"]};"></span>
@@ -1277,13 +1222,13 @@ try:
   <div class="stat-right">{total_v:,}</div>
 </div>'''
 
-                for _, r in versions_df.iterrows():
-                    v = r["CLIENT_VERSION"]
-                    u = int(r["USERS"])
-                    pr = float(r["PERCENT"])
-                    dot_color = color_map.get(v, COLORS["other"])
+            for _, r in versions_df.iterrows():
+                v = r["CLIENT_VERSION"]
+                u = int(r["USERS"])
+                pr = float(r["PERCENT"])
+                dot_color = color_map.get(v, COLORS["other"])
 
-                    legend_html += f'''
+                legend_html += f'''
 <div class="stat-row">
   <div>
     <div class="stat-left"><span class="dot" style="background:{dot_color};"></span>
@@ -1294,10 +1239,10 @@ try:
   <div class="stat-right">{u:,}</div>
 </div>'''
 
-                st.markdown(
-                    f'<div class="legend-card card" style="background: #FFFFFF; border: 1px solid rgba(15,23,42,0.14); border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(15,23,42,0.06);">{legend_html}</div>',
-                    unsafe_allow_html=True,
-                )
+            st.markdown(
+                f'<div class="legend-card card" style="background: #FFFFFF; border: 1px solid rgba(15,23,42,0.14); border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(15,23,42,0.06);">{legend_html}</div>',
+                unsafe_allow_html=True,
+            )
 
     else:
         st.info("Ma'lumotlar mavjud emas")
@@ -1334,46 +1279,24 @@ if len(date_range) == 2:
         start_date = min_date
     
     start_str = start_date.strftime("%Y-%m-%d")
-    end_adjusted = end_date + timedelta(days=1)
-    end_str = end_adjusted.strftime("%Y-%m-%d")
+    end_str = end_date.strftime("%Y-%m-%d")
 
     try:
-        if period_type == "Kunlik":
-            new_users_df = run_query(f"""
-                SELECT
-                    PLAYER_START_DATE as SANA,
-                    COUNT(DISTINCT USER_ID) as YANGI_USERS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-                WHERE GAME_ID = {GAME_ID}
-                AND PLAYER_START_DATE >= '{start_str}' AND PLAYER_START_DATE < '{end_str}'
-                GROUP BY PLAYER_START_DATE
-                ORDER BY PLAYER_START_DATE
-            """)
-        elif period_type == "Haftalik":
-            new_users_df = run_query(f"""
-                SELECT
-                    DATE_TRUNC('week', PLAYER_START_DATE) as SANA,
-                    COUNT(DISTINCT USER_ID) as YANGI_USERS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-                WHERE GAME_ID = {GAME_ID}
-                AND PLAYER_START_DATE >= '{start_str}' AND PLAYER_START_DATE < '{end_str}'
-                GROUP BY DATE_TRUNC('week', PLAYER_START_DATE)
-                ORDER BY SANA
-            """)
-        else:
-            new_users_df = run_query(f"""
-                SELECT
-                    DATE_TRUNC('month', PLAYER_START_DATE) as SANA,
-                    COUNT(DISTINCT USER_ID) as YANGI_USERS
-                FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-                WHERE GAME_ID = {GAME_ID}
-                AND PLAYER_START_DATE >= '{start_str}' AND PLAYER_START_DATE < '{end_str}'
-                GROUP BY DATE_TRUNC('month', PLAYER_START_DATE)
-                ORDER BY SANA
-            """)
+        daily_df = run_report(["date"], ["newUsers"], start_str, end_str)
 
-        if not new_users_df.empty:
-            new_users_df["SANA"] = pd.to_datetime(new_users_df["SANA"])
+        if not daily_df.empty:
+            daily_df["SANA"] = pd.to_datetime(daily_df["date"])
+            daily_df["YANGI_USERS"] = daily_df["newUsers"].astype(int)
+
+            if period_type == "Kunlik":
+                new_users_df = daily_df[["SANA", "YANGI_USERS"]].copy()
+            elif period_type == "Haftalik":
+                daily_df["SANA"] = daily_df["SANA"].dt.to_period("W").apply(lambda r: r.start_time)
+                new_users_df = daily_df.groupby("SANA", as_index=False)["YANGI_USERS"].sum()
+            else:
+                daily_df["SANA"] = daily_df["SANA"].dt.to_period("M").dt.to_timestamp()
+                new_users_df = daily_df.groupby("SANA", as_index=False)["YANGI_USERS"].sum()
+
             new_users_df["SANA_STR"] = new_users_df["SANA"].dt.strftime("%Y-%m-%d")
 
             m1, m2, m3 = st.columns(3)
@@ -1394,7 +1317,7 @@ if len(date_range) == 2:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, width="stretch")
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
     except Exception as e:
@@ -1425,22 +1348,18 @@ with right:
 try:
     if session_view == "Soatlik":
         date_str = session_date.strftime("%Y-%m-%d")
-        sessions_df = run_query(f"""
-            SELECT
-                HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP)) as SOAT,
-                COUNT(*) as HODISALAR,
-                COUNT(DISTINCT USER_ID) as FOYDALANUVCHILAR
-            FROM {DB}.ACCOUNT_EVENTS
-            WHERE GAME_ID = {GAME_ID}
-            AND DATE(EVENT_TIMESTAMP) = '{date_str}'
-            GROUP BY HOUR(DATEADD(hour, 5, EVENT_TIMESTAMP))
-            ORDER BY SOAT
-        """)
+        sessions_df = run_report(
+            ["hour"],
+            ["sessions", "activeUsers"],
+            date_str,
+            date_str,
+            order_by=[OrderBy(dimension=OrderBy.DimensionOrderBy(dimension_name="hour"))],
+        )
 
         if not sessions_df.empty:
-            sessions_df["SOAT"] = pd.to_numeric(sessions_df["SOAT"], errors="coerce").fillna(0).astype(int)
-            sessions_df["HODISALAR"] = pd.to_numeric(sessions_df["HODISALAR"], errors="coerce").fillna(0).astype(int)
-            sessions_df["FOYDALANUVCHILAR"] = pd.to_numeric(sessions_df["FOYDALANUVCHILAR"], errors="coerce").fillna(0).astype(int)
+            sessions_df["SOAT"] = pd.to_numeric(sessions_df["hour"], errors="coerce").fillna(0).astype(int)
+            sessions_df["HODISALAR"] = pd.to_numeric(sessions_df["sessions"], errors="coerce").fillna(0).astype(int)
+            sessions_df["FOYDALANUVCHILAR"] = pd.to_numeric(sessions_df["activeUsers"], errors="coerce").fillna(0).astype(int)
             sessions_df["SOAT_LABEL"] = sessions_df["SOAT"].apply(lambda x: f"{x:02d}:00")
 
             m1, m2 = st.columns(2)
@@ -1461,7 +1380,7 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, width="stretch")
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Tanlangan sana uchun ma'lumotlar mavjud emas")
     else:
@@ -1475,25 +1394,24 @@ try:
             end_date = datetime.now()  # Hozirgi vaqt
             start_date = end_date - timedelta(days=days)
 
-        sessions_df = run_query(f"""
-            SELECT
-                EVENT_DATE as SANA,
-                COUNT(DISTINCT SESSION_ID) as SESSIYALAR,
-                ROUND(AVG(TOTAL_TIME_MS) / 60000, 1) as ORTACHA_DAVOMIYLIK
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-            WHERE GAME_ID = {GAME_ID}
-            AND EVENT_DATE BETWEEN '{start_date.strftime("%Y-%m-%d")}' AND '{end_date.strftime("%Y-%m-%d")}'
-            GROUP BY EVENT_DATE
-            ORDER BY EVENT_DATE
-        """)
+        sessions_df = run_report(
+            ["date"],
+            ["sessions", "averageSessionDuration"],
+            start_date.strftime("%Y-%m-%d"),
+            end_date.strftime("%Y-%m-%d"),
+            order_by=[OrderBy(dimension=OrderBy.DimensionOrderBy(dimension_name="date"))],
+        )
 
         if not sessions_df.empty:
+            sessions_df["SESSIYALAR"] = pd.to_numeric(sessions_df["sessions"], errors="coerce").fillna(0).astype(int)
+            # averageSessionDuration seconds -> minutes
+            sessions_df["ORTACHA_DAVOMIYLIK"] = pd.to_numeric(sessions_df.get("averageSessionDuration", 0), errors="coerce").fillna(0) / 60
             m1, m2, m3 = st.columns(3)
             m1.metric("Jami", f"{int(sessions_df['SESSIYALAR'].sum()):,}")
             m2.metric("O'rtacha kunlik", f"{int(sessions_df['SESSIYALAR'].mean()):,}")
             m3.metric("O'rtacha o'yin davomiyligi", f"{round(float(sessions_df['ORTACHA_DAVOMIYLIK'].mean()), 1)} daq")
 
-            sessions_df["SANA"] = pd.to_datetime(sessions_df["SANA"])
+            sessions_df["SANA"] = pd.to_datetime(sessions_df["date"])
             sessions_df["SANA_STR"] = sessions_df["SANA"].dt.strftime("%Y-%m-%d")
 
             chart = (
@@ -1510,7 +1428,7 @@ try:
                 )
                 .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
             )
-            st.altair_chart(chart, width="stretch")
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Ma'lumotlar mavjud emas")
 except Exception as e:
@@ -1543,18 +1461,16 @@ try:
     else:
         dau_start = dau_end - timedelta(days=dau_days)
 
-    dau_trend_df = run_query(f"""
-        SELECT
-            EVENT_DATE as SANA,
-            COUNT(DISTINCT USER_ID) as DAU
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        AND EVENT_DATE BETWEEN '{dau_start.strftime("%Y-%m-%d")}' AND '{dau_end.strftime("%Y-%m-%d")}'
-        GROUP BY EVENT_DATE
-        ORDER BY EVENT_DATE
-    """)
+    dau_trend_df = run_report(
+        ["date"],
+        ["activeUsers"],
+        dau_start.strftime("%Y-%m-%d"),
+        dau_end.strftime("%Y-%m-%d"),
+        order_by=[OrderBy(dimension=OrderBy.DimensionOrderBy(dimension_name="date"))],
+    )
     if not dau_trend_df.empty:
-        dau_trend_df["SANA"] = pd.to_datetime(dau_trend_df["SANA"])
+        dau_trend_df["DAU"] = pd.to_numeric(dau_trend_df["activeUsers"], errors="coerce").fillna(0).astype(int)
+        dau_trend_df["SANA"] = pd.to_datetime(dau_trend_df["date"])
         dau_trend_df["SANA_STR"] = dau_trend_df["SANA"].dt.strftime("%Y-%m-%d")
 
         m1, m2, m3 = st.columns(3)
@@ -1628,21 +1544,17 @@ try:
     if mau_start < min_date:
         mau_start = min_date
 
-
-    mau_trend_df = run_query(f"""
-        SELECT
-            DATE_TRUNC('month', EVENT_DATE) as OY,
-            COUNT(DISTINCT USER_ID) as MAU
-        FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-        WHERE GAME_ID = {GAME_ID}
-        AND EVENT_DATE BETWEEN '{mau_start.strftime("%Y-%m-%d")}' AND '{mau_end.strftime("%Y-%m-%d")}'
-        GROUP BY DATE_TRUNC('month', EVENT_DATE)
-        ORDER BY OY
-    """)
+    mau_trend_df = run_report(
+        ["yearMonth"],
+        ["activeUsers"],
+        mau_start.strftime("%Y-%m-%d"),
+        mau_end.strftime("%Y-%m-%d"),
+        order_by=[OrderBy(dimension=OrderBy.DimensionOrderBy(dimension_name="yearMonth"))],
+    )
 
     if not mau_trend_df.empty:
-        mau_trend_df["OY"] = pd.to_datetime(mau_trend_df["OY"])
-        mau_trend_df["OY"] = pd.to_datetime(mau_trend_df["OY"])
+        mau_trend_df["OY"] = pd.to_datetime(mau_trend_df["yearMonth"].astype(int).astype(str) + "01", format="%Y%m%d")
+        mau_trend_df["MAU"] = pd.to_numeric(mau_trend_df["activeUsers"], errors="coerce").fillna(0).astype(int)
 
         MONTHS_UZ = {
             1: "Yanvar", 2: "Fevral", 3: "Mart", 4: "Aprel",
@@ -1669,8 +1581,7 @@ try:
                     alt.Tooltip("OY_LABEL:O", title="Yil-Oy"),
                     alt.Tooltip("MAU:Q", title="MAU", format=","),
                 ],
-    )
-    .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
+            )
             .properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
         )
         st.altair_chart(mau_chart, use_container_width=True)
@@ -1679,271 +1590,4 @@ try:
 except Exception as e:
     st.error(f"MAU trend xatolik: {e}")
 
-# Mini games trends
-
-left, right = st.columns([1.35, 1], gap="large", vertical_alignment="bottom")
-with left:
-    st.markdown('''<div class="sec-title">🎮 Mini o'yinlar trendi</div><div class="sec-sub">Tanlangan mini-o'yin va davr bo'yicha o'yinga kirishlar soni</div>''', unsafe_allow_html=True)
-with right:
-    m1, m2 = st.columns([1.2, 1], gap="small")
-    with m1:
-        st.markdown('<div style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">Davr</div>', unsafe_allow_html=True)
-        mg_date_range = st.date_input(
-            "Sana oralig'i",
-            value=(datetime.now().date() - timedelta(days=30), datetime.now().date()),
-            key="mg_date",
-            label_visibility="collapsed"
-        )
-    with m2:
-        st.markdown('<div style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">Mini o\'yin</div>', unsafe_allow_html=True)
-        try:
-            mg_list = run_query(f"""
-                SELECT DISTINCT EVENT_JSON:MiniGameName::STRING as MINI_GAME
-                FROM {DB}.ACCOUNT_EVENTS
-                WHERE GAME_ID = {GAME_ID} AND EVENT_NAME = 'playedMiniGameStatus'
-                AND EVENT_JSON:MiniGameName::STRING IS NOT NULL
-            """)
-            mg_options = ["Barchasi"] + [get_minigame_name(mg) for mg in mg_list["MINI_GAME"].tolist() if mg]
-            mg_original = {get_minigame_name(mg): mg for mg in mg_list["MINI_GAME"].tolist() if mg}
-            selected_mg = st.selectbox("Mini o'yin", mg_options, key="mg_filter", label_visibility="collapsed")
-        except Exception:
-            selected_mg = "Barchasi"
-            mg_original = {}
-
-if len(mg_date_range) == 2:
-    mg_start, mg_end = mg_date_range
-    min_date = datetime(2025, 12, 27).date()
-    if mg_start < min_date:
-        mg_start = min_date
-
-    mg_start_str = mg_start.strftime("%Y-%m-%d")
-    mg_end_adjusted = mg_end + timedelta(days=1)
-    mg_end_str = mg_end_adjusted.strftime("%Y-%m-%d")
-
-    try:
-        if selected_mg == "Barchasi":
-            mg_stats = run_query(f"""
-                SELECT
-                    DATE(EVENT_TIMESTAMP) as SANA,
-                    COUNT(*) as OYINLAR
-                FROM {DB}.ACCOUNT_EVENTS
-                WHERE GAME_ID = {GAME_ID}
-                AND EVENT_NAME = 'playedMiniGameStatus'
-                AND EVENT_TIMESTAMP >= '{mg_start_str}' AND EVENT_TIMESTAMP < '{mg_end_str}'
-                GROUP BY DATE(EVENT_TIMESTAMP)
-                ORDER BY SANA
-            """)
-        else:
-            original_name = mg_original.get(selected_mg, selected_mg)
-            mg_stats = run_query(f"""
-                SELECT
-                    DATE(EVENT_TIMESTAMP) as SANA,
-                    COUNT(*) as OYINLAR
-                FROM {DB}.ACCOUNT_EVENTS
-                WHERE GAME_ID = {GAME_ID}
-                AND EVENT_NAME = 'playedMiniGameStatus'
-                AND EVENT_JSON:MiniGameName::STRING = '{original_name}'
-                AND EVENT_TIMESTAMP >= '{mg_start_str}' AND EVENT_TIMESTAMP < '{mg_end_str}'
-                GROUP BY DATE(EVENT_TIMESTAMP)
-                ORDER BY SANA
-            """)
-
-        if not mg_stats.empty:
-            mg_stats["SANA"] = pd.to_datetime(mg_stats["SANA"])
-
-            # Shaded area
-            area = (
-                alt.Chart(mg_stats)
-                .mark_area(
-                    color=COLORS["minigame"],
-                    opacity=0.2,
-                    line=False
-                )
-                .encode(
-                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=5, labelFontWeight=600)),
-                    y=alt.Y("OYINLAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
-                )
-            )
-            
-            # Line
-            line = (
-                alt.Chart(mg_stats)
-                .mark_line(color=COLORS["minigame"], strokeWidth=2.6, opacity=0.9)
-                .encode(
-                    x=alt.X("SANA:T", title="", axis=alt.Axis(format="%Y-%m-%d", labelAngle=-30, tickCount=10, labelFontWeight=600)),
-                    y=alt.Y("OYINLAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
-                    tooltip=[
-                        alt.Tooltip("SANA:T", title="Sana", format="%Y-%m-%d"),
-                        alt.Tooltip("OYINLAR:Q", title="O'yinlar", format=","),
-                    ],
-                )
-            )
-            
-            # Points
-            points = (
-                alt.Chart(mg_stats)
-                .mark_circle(size=60, color=COLORS["minigame"], opacity=0.85)
-                .encode(x="SANA:T", y="OYINLAR:Q")
-            )
-
-            st.altair_chart((area + line + points).properties(height=320, padding={"top": 18, "left": 8, "right": 8, "bottom": 8}), width="stretch")
-        else:
-            st.info("Tanlangan davr uchun ma'lumotlar mavjud emas")
-    except Exception as e:
-        st.error(f"Mini oyinlar trendi xatolik: {e}")
-
-# ----------------------------
-# 7) Top 5 mini-games
-# ----------------------------
-st.markdown(
-    """
-<div class="sec-row">
-  <div>
-    <div class="sec-title">🏆 TOP 5 mini o'yin</div>
-    <div class="sec-sub">Eng ko'p o'ynalganlar</div>
-  </div>
-  <div></div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-try:
-    top_games = run_query(f"""
-        SELECT
-            EVENT_JSON:MiniGameName::STRING as MINI_GAME,
-            COUNT(*) as OYINLAR
-        FROM {DB}.ACCOUNT_EVENTS
-        WHERE GAME_ID = {GAME_ID} AND EVENT_NAME = 'playedMiniGameStatus'
-        AND EVENT_JSON:MiniGameName::STRING IS NOT NULL
-        GROUP BY EVENT_JSON:MiniGameName::STRING
-        ORDER BY OYINLAR DESC
-        LIMIT 5
-    """)
-
-    if not top_games.empty:
-        top_games["NOMI"] = top_games["MINI_GAME"].apply(get_minigame_name)
-        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
-
-        # Build all rows as single HTML block
-        rows_html = ""
-        for i, row in top_games.reset_index(drop=True).iterrows():
-            medal = medals[i] if i < len(medals) else f"#{i+1}"
-            rows_html += f'''
-<div class="rank-row">
-  <div class="rank-badge">{medal}</div>
-  <div class="rank-name">{row["NOMI"]}</div>
-  <div class="rank-val">{int(row["OYINLAR"]):,}</div>
-</div>'''
-
-        st.markdown(f'<div class="rank-card card" style="margin-bottom: 16px;">{rows_html}</div>', unsafe_allow_html=True)
-
-        chart = (
-            alt.Chart(top_games)
-            .mark_bar(color=COLORS["purple"], cornerRadiusTopRight=8, cornerRadiusBottomRight=8, size=34, opacity=0.92)
-            .encode(
-                x=alt.X("OYINLAR:Q", title="", axis=alt.Axis(labelFontWeight=600)),
-                y=alt.Y("NOMI:N", title="", sort="-x", axis=alt.Axis(labelFontWeight=600)),
-                tooltip=[
-                    alt.Tooltip("NOMI:N", title="O'yin"),
-                    alt.Tooltip("OYINLAR:Q", title="O'ynalishlar", format=","),
-                ],
-            )
-            .properties(height=290, padding={"top": 18, "left": 8, "right": 8, "bottom": 8})
-        )
-        st.altair_chart(chart, width="stretch")
-    else:
-        st.info("Ma'lumotlar mavjud emas")
-except Exception as e:
-    st.error(f"TOP 5 mini o'yin xatolik: {e}")
-
-
-# ----------------------------
-# 8) Retention
-# ----------------------------
-st.markdown(
-    """
-<div class="sec-row">
-  <div>
-    <div class="sec-title">🔄 Saqlanib qolish darajasi</div>
-    <div class="sec-sub">Ma'lum kundan keyin ilovaga qaytgan foydalanuvchilar foizi</div>
-  </div>
-  <div></div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-c1, c2, c3 = st.columns(3)
-
-try:
-    d1 = run_query(f"""
-        WITH first_day AS (
-            SELECT USER_ID, MIN(EVENT_DATE) as first_date
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-            WHERE GAME_ID = {GAME_ID}
-            GROUP BY USER_ID
-        ),
-        returned AS (
-            SELECT f.USER_ID
-            FROM first_day f
-            JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s
-              ON f.USER_ID = s.USER_ID
-             AND s.EVENT_DATE = DATEADD(day, 1, f.first_date)
-             AND s.GAME_ID = {GAME_ID}
-        )
-        SELECT ROUND(COUNT(DISTINCT r.USER_ID) * 100.0 / NULLIF(COUNT(DISTINCT f.USER_ID), 0), 1) as RET
-        FROM first_day f
-        LEFT JOIN returned r ON f.USER_ID = r.USER_ID
-    """)
-    c1.metric("1-kun", f"{float(d1['RET'][0] or 0.0)}%")
-except Exception:
-    c1.metric("1-kun", "N/A")
-
-try:
-    d7 = run_query(f"""
-        WITH first_day AS (
-            SELECT USER_ID, MIN(EVENT_DATE) as first_date
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-            WHERE GAME_ID = {GAME_ID}
-            GROUP BY USER_ID
-        ),
-        returned AS (
-            SELECT f.USER_ID
-            FROM first_day f
-            JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s
-              ON f.USER_ID = s.USER_ID
-             AND s.EVENT_DATE = DATEADD(day, 7, f.first_date)
-             AND s.GAME_ID = {GAME_ID}
-        )
-        SELECT ROUND(COUNT(DISTINCT r.USER_ID) * 100.0 / NULLIF(COUNT(DISTINCT f.USER_ID), 0), 1) as RET
-        FROM first_day f
-        LEFT JOIN returned r ON f.USER_ID = r.USER_ID
-    """)
-    c2.metric("7-kun", f"{float(d7['RET'][0] or 0.0)}%")
-except Exception:
-    c2.metric("7-kun", "N/A")
-
-try:
-    d30 = run_query(f"""
-        WITH first_day AS (
-            SELECT USER_ID, MIN(EVENT_DATE) as first_date
-            FROM {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY
-            WHERE GAME_ID = {GAME_ID}
-            GROUP BY USER_ID
-        ),
-        returned AS (
-            SELECT f.USER_ID
-            FROM first_day f
-            JOIN {DB}.ACCOUNT_FACT_USER_SESSIONS_DAY s
-              ON f.USER_ID = s.USER_ID
-             AND s.EVENT_DATE = DATEADD(day, 30, f.first_date)
-             AND s.GAME_ID = {GAME_ID}
-        )
-        SELECT ROUND(COUNT(DISTINCT r.USER_ID) * 100.0 / NULLIF(COUNT(DISTINCT f.USER_ID), 0), 1) as RET
-        FROM first_day f
-        LEFT JOIN returned r ON f.USER_ID = r.USER_ID
-    """)
-    c3.metric("30-kun", f"{float(d30['RET'][0] or 0.0)}%")
-except Exception:
-    c3.metric("30-kun", "N/A")
+# Removed mini-game trend, top 5, and retention sections per request
